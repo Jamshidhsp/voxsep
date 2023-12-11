@@ -21,6 +21,7 @@ def sample_box(image_size, patch_size, anchor_voxel=None):
         min_start = np.maximum(min_start, anchor_voxel - patch_size + 1)
         max_start = np.minimum(max_start, anchor_voxel)
     start = np.random.randint(min_start, max_start + 1)
+    # start = min_start
     return np.array([start, start + patch_size])
 
 
@@ -35,7 +36,7 @@ def sample_patches(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     image_size = np.array(image.shape[-3:])
     assert np.all(patch_size <= image_size)
-
+    # print('check_mask', mask.shape)
     assert mask.ndim == 4
     resampling_voxels = np.argwhere(random.choice(mask))
     for _ in range(num_patches):

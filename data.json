@@ -1,0 +1,102 @@
+{ 
+ "name": "LeftAtrium", 
+ "description": "Left atrium segmentation",
+"tensorImageSize": "3D",
+"reference": "King’s College London",
+"licence":"CC-BY-SA 4.0",
+"relase":"1.0 04/05/2018",
+"modality": { 
+	 "0": "MRI"
+ }, 
+ "labels": { 
+	 "0": "background", 
+	 "1": "left atrium",
+	 "2": "right atrium"
+	 
+ }, 
+ "numTraining": 63, 
+ "numTest": 14,
+ "training":[
+ {"image":"./imagesTr/d_001.nii.gz","label":"./labelsTr/d_001.nii.gz"}
+ ,{"image":"./imagesTr/d_002.nii.gz","label":"./labelsTr/d_002.nii.gz"}
+ ,{"image":"./imagesTr/d_003.nii.gz","label":"./labelsTr/d_003.nii.gz"}
+ ,{"image":"./imagesTr/d_004.nii.gz","label":"./labelsTr/d_004.nii.gz"}
+ ,{"image":"./imagesTr/d_005.nii.gz","label":"./labelsTr/d_005.nii.gz"}
+ ,{"image":"./imagesTr/d_006.nii.gz","label":"./labelsTr/d_006.nii.gz"}
+ ,{"image":"./imagesTr/d_007.nii.gz","label":"./labelsTr/d_007.nii.gz"}
+ ,{"image":"./imagesTr/d_008.nii.gz","label":"./labelsTr/d_008.nii.gz"}
+ ,{"image":"./imagesTr/d_009.nii.gz","label":"./labelsTr/d_009.nii.gz"}
+ ,{"image":"./imagesTr/d_011.nii.gz","label":"./labelsTr/d_011.nii.gz"}
+ ,{"image":"./imagesTr/d_012.nii.gz","label":"./labelsTr/d_012.nii.gz"}
+ ,{"image":"./imagesTr/d_013.nii.gz","label":"./labelsTr/d_013.nii.gz"}
+ ,{"image":"./imagesTr/d_015.nii.gz","label":"./labelsTr/d_015.nii.gz"}
+ ,{"image":"./imagesTr/d_017.nii.gz","label":"./labelsTr/d_017.nii.gz"}
+ ,{"image":"./imagesTr/d_018.nii.gz","label":"./labelsTr/d_018.nii.gz"}
+ ,{"image":"./imagesTr/d_022.nii.gz","label":"./labelsTr/d_022.nii.gz"}
+ ,{"image":"./imagesTr/d_023.nii.gz","label":"./labelsTr/d_023.nii.gz"}
+ ,{"image":"./imagesTr/d_024.nii.gz","label":"./labelsTr/d_024.nii.gz"}
+ ,{"image":"./imagesTr/d_025.nii.gz","label":"./labelsTr/d_025.nii.gz"}
+ ,{"image":"./imagesTr/d_026.nii.gz","label":"./labelsTr/d_026.nii.gz"}
+ ,{"image":"./imagesTr/d_027.nii.gz","label":"./labelsTr/d_027.nii.gz"}
+ ,{"image":"./imagesTr/d_029.nii.gz","label":"./labelsTr/d_029.nii.gz"}
+ ,{"image":"./imagesTr/d_030.nii.gz","label":"./labelsTr/d_030.nii.gz"}
+ ,{"image":"./imagesTr/d_032.nii.gz","label":"./labelsTr/d_032.nii.gz"}
+ ,{"image":"./imagesTr/d_033.nii.gz","label":"./labelsTr/d_033.nii.gz"}
+ ,{"image":"./imagesTr/d_034.nii.gz","label":"./labelsTr/d_034.nii.gz"}
+ ,{"image":"./imagesTr/d_035.nii.gz","label":"./labelsTr/d_035.nii.gz"}
+ ,{"image":"./imagesTr/d_036.nii.gz","label":"./labelsTr/d_036.nii.gz"}
+ ,{"image":"./imagesTr/d_037.nii.gz","label":"./labelsTr/d_037.nii.gz"}
+ ,{"image":"./imagesTr/d_042.nii.gz","label":"./labelsTr/d_042.nii.gz"}
+ ,{"image":"./imagesTr/d_043.nii.gz","label":"./labelsTr/d_043.nii.gz"}
+ ,{"image":"./imagesTr/d_045.nii.gz","label":"./labelsTr/d_045.nii.gz"}
+ ,{"image":"./imagesTr/d_046.nii.gz","label":"./labelsTr/d_046.nii.gz"}
+ ,{"image":"./imagesTr/d_048.nii.gz","label":"./labelsTr/d_048.nii.gz"}
+ ,{"image":"./imagesTr/d_049.nii.gz","label":"./labelsTr/d_049.nii.gz"}
+ ,{"image":"./imagesTr/d_050.nii.gz","label":"./labelsTr/d_050.nii.gz"}
+ ,{"image":"./imagesTr/d_052.nii.gz","label":"./labelsTr/d_052.nii.gz"}
+ ,{"image":"./imagesTr/d_053.nii.gz","label":"./labelsTr/d_053.nii.gz"}
+ ,{"image":"./imagesTr/d_055.nii.gz","label":"./labelsTr/d_055.nii.gz"}
+ ,{"image":"./imagesTr/d_056.nii.gz","label":"./labelsTr/d_056.nii.gz"}
+ ,{"image":"./imagesTr/d_057.nii.gz","label":"./labelsTr/d_057.nii.gz"}
+ ,{"image":"./imagesTr/d_059.nii.gz","label":"./labelsTr/d_059.nii.gz"}
+ ,{"image":"./imagesTr/d_060.nii.gz","label":"./labelsTr/d_060.nii.gz"}
+ ,{"image":"./imagesTr/d_061.nii.gz","label":"./labelsTr/d_061.nii.gz"}
+ ,{"image":"./imagesTr/d_062.nii.gz","label":"./labelsTr/d_062.nii.gz"}
+ ,{"image":"./imagesTr/d_063.nii.gz","label":"./labelsTr/d_063.nii.gz"}
+ ,{"image":"./imagesTr/d_064.nii.gz","label":"./labelsTr/d_064.nii.gz"}
+ ,{"image":"./imagesTr/d_067.nii.gz","label":"./labelsTr/d_067.nii.gz"}
+ ,{"image":"./imagesTr/d_068.nii.gz","label":"./labelsTr/d_068.nii.gz"}
+ ,{"image":"./imagesTr/d_069.nii.gz","label":"./labelsTr/d_069.nii.gz"}
+ ,{"image":"./imagesTr/d_070.nii.gz","label":"./labelsTr/d_070.nii.gz"}
+ ,{"image":"./imagesTr/d_071.nii.gz","label":"./labelsTr/d_071.nii.gz"}
+ ,{"image":"./imagesTr/d_072.nii.gz","label":"./labelsTr/d_072.nii.gz"}
+ ,{"image":"./imagesTr/d_074.nii.gz","label":"./labelsTr/d_074.nii.gz"}
+ ,{"image":"./imagesTr/d_077.nii.gz","label":"./labelsTr/d_077.nii.gz"}
+ ,{"image":"./imagesTr/d_079.nii.gz","label":"./labelsTr/d_079.nii.gz"}
+,{"image":"./imagesTr/d_080.nii.gz","label":"./labelsTr/d_080.nii.gz"}
+,{"image":"./imagesTr/d_081.nii.gz","label":"./labelsTr/d_081.nii.gz"}
+,{"image":"./imagesTr/d_082.nii.gz","label":"./labelsTr/d_082.nii.gz"}
+,{"image":"./imagesTr/d_083.nii.gz","label":"./labelsTr/d_083.nii.gz"}
+,{"image":"./imagesTr/d_084.nii.gz","label":"./labelsTr/d_084.nii.gz"}
+ ,{"image":"./imagesTr/d_096.nii.gz", "label":"./labelsTr/d_096.nii.gz"}
+ ,{"image":"./imagesTr/d_097.nii.gz", "label":"./labelsTr/d_097.nii.gz"}
+ ,{"image":"./imagesTr/d_098.nii.gz", "label":"./labelsTr/d_098.nii.gz"}
+ ,{"image":"./imagesTr/d_101.nii.gz", "label":"./labelsTr/d_101.nii.gz"}
+ ,{"image":"./imagesTr/d_102.nii.gz", "label":"./labelsTr/d_102.nii.gz"}
+ ,{"image":"./imagesTr/d_103.nii.gz", "label":"./labelsTr/d_103.nii.gz"}
+ ,{"image":"./imagesTr/d_105.nii.gz", "label":"./labelsTr/d_105.nii.gz"}
+ ,{"image":"./imagesTr/d_040.nii.gz","label":"./labelsTr/d_040.nii.gz"}
+ ,{"image":"./imagesTr/d_041.nii.gz","label":"./labelsTr/d_041.nii.gz"}
+ ,{"image":"./imagesTr/d_099.nii.gz","label":"./labelsTr/d_099.nii.gz"}
+
+      
+ ],
+ 
+ "test":["./imagesTs/d_085.nii.gz",
+ "./imagesTs/d_088.nii.gz",
+ "./imagesTs/d_091.nii.gz",
+ "./imagesTs/d_092.nii.gz"
+ ,"./imagesTs/d_094.nii.gz"
+ ,"./imagesTs/d_095.nii.gz"
+]
+}

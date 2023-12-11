@@ -1,44 +1,10 @@
-from typing import *
-from tqdm import tqdm
-import numpy as np
-import random
-from imops import crop_to_box
-
 import torch
-from torch.utils.data import Dataset
-
+from torch.utils.data import DataLoader
+from connectome import Merge, Source, meta, Chain, Filter,  Transform, Apply, CacheToRam, CacheToDisk
 from amid.amos import AMOS
-from amid.flare2022 import FLARE2022
-from amid.nlst import NLST
-from amid.lidc import LIDC
-from amid.nsclc import NSCLC
-from amid.midrc import MIDRC
-
-from connectome import Chain, Transform, Filter, Apply, GroupBy, Merge, CacheToDisk
-
-from vox2vec.processing import (
-    LocationsToSpacing, FlipAxesToCanonical, CropToBox, RescaleToSpacing,
-    get_body_mask, BODY_THRESHOLD_HU, sample_box, gaussian_filter, gaussian_sharpen,
-    scale_hu
-)
-from vox2vec.utils.box import mask_to_bbox
-from vox2vec.utils.misc import is_diagonal
-
-
-def prepare_nlst_ids(nlst_dir, patch_size):
-    nlst = NLST(root=nlst_dir)
-    for id_ in tqdm(nlst.ids, desc='Warming up NLST().patient_id method'):
-        nlst.patient_id(id_)
-
-    nlst_patients = nlst >> GroupBy('patient_id')
-    ids = []
-    for patient_id in tqdm(nlst_patients.ids, desc='Preparing NLST ids'):
-        id, slice_locations = max(nlst_patients.slice_locations(patient_id).items(), key=lambda i: len(i[1]))
-        if len(slice_locations) >= patch_size[2]:
-            ids.append(id)
-
-    return ids
-
+from torch.utils.data import Dataset
+from typing import *
+import numpy as np
 
 class PretrainDataset(Dataset):
     def __init__(
@@ -68,59 +34,19 @@ class PretrainDataset(Dataset):
             AMOS(root=amos_dir),
             Filter.keep(amos_ct_ids),
             parse_affine,
-            FlipAxesToCanonical(),
         )
-
-        # flare = Chain(
-        #     FLARE2022(root=flare_dir),
-        #     Filter(lambda id: id.startswith('TU'), verbose=True),
-        #     Filter(lambda affine: is_diagonal(affine[:3, :3]), verbose=True),
-        #     CacheToDisk.simple('ids', root=cache_dir),
-        #     parse_affine,
-        #     FlipAxesToCanonical(),
-        # )
-
-        # nlst = Chain(
-        #     NLST(root=nlst_dir),
-        #     Transform(__inherit__=True, ids=lambda: prepare_nlst_ids(nlst_dir, patch_size)),
-        #     CacheToDisk.simple('ids', root=cache_dir),
-        #     LocationsToSpacing(),
-        #     Apply(image=lambda x: np.flip(x, axis=(0, 1)).copy())
-        # )
-
-        # midrc = Chain(
-        #     MIDRC(root=midrc_dir),
-        #     Apply(image=lambda x: np.flip(x, axis=(0, 1)).copy())
-        # )
-
-        # nsclc = Chain(
-        #     NSCLC(root=nsclc_dir),
-        #     Apply(image=lambda x: np.flip(x, axis=(0, 1)).copy())
-        # )
-
-        # lidc = Chain(
-        #     LIDC(),  # see amid docs
-        #     Apply(image=lambda x: np.flip(np.swapaxes(x, 0, 1), axis=(0, 1)).copy())
-        # )
 
         # use connectome for smart cashing (with automatic invalidation)
         pipeline = Chain(
             Merge(
                 amos,  # 500 abdominal CTs
-                # flare,  # 2000 abdominal CTs
-                # nlst,  # ~2500 thoracic CTs
-                # midrc,  # ~150 thoracic CTs (most patients with COVID-19)
-                # nsclc,  # ~400 thoracic CTs (most patients with severe non-small cell lung cancer)
-                # lidc  # ~1000 thoracic CTs (most patients with lung nodules)
-            ),  # ~6550 openly available CTs in total, covering abdomen and thorax domains
-            # cache spacing
+            ),  
             CacheToDisk.simple('spacing', root=cache_dir),
             Filter(lambda spacing: spacing[-1] is not None, verbose=True),
             CacheToDisk.simple('ids', root=cache_dir),
             # cropping, rescaling
             Transform(__inherit__=True, cropping_box=lambda image: mask_to_bbox(image >= BODY_THRESHOLD_HU)),
-            CropToBox(axis=(-3, -2, -1)),
-            RescaleToSpacing(to_spacing=spacing, axis=(-3, -2, -1), image_fill_value=lambda x: np.min(x)),
+           
             Apply(image=lambda x: np.int16(x)),
             CacheToDisk.simple('image', root=cache_dir),
             Apply(image=lambda x: np.float32(x)),
@@ -171,17 +97,10 @@ def sample_views(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     anchor_voxel = random.choice(roi_voxels)  # (3,)
 
-    # rotate_angle = random.choice(0, 30)
-
     patch_1, roi_voxels_1 = sample_view(image, roi_voxels, anchor_voxel, patch_size,
                                          window_hu, min_window_hu, max_window_hu)
     patch_2, roi_voxels_2 = sample_view(image, roi_voxels, anchor_voxel, patch_size,
                                          window_hu, min_window_hu, max_window_hu)
-    
-    # patch_1, roi_voxels_1 = sample_view(image, roi_voxels, anchor_voxel, patch_size,
-    #                                      window_hu, min_window_hu, max_window_hu, rotate_angle)
-    # patch_2, roi_voxels_2 = sample_view(image, roi_voxels, anchor_voxel, patch_size,
-    #                                      window_hu, min_window_hu, max_window_hu, rotate_angle)
 
     valid_1 = np.all((roi_voxels_1 >= 0) & (roi_voxels_1 < patch_size), axis=1)
     valid_2 = np.all((roi_voxels_2 >= 0) & (roi_voxels_2 < patch_size), axis=1)
@@ -196,7 +115,6 @@ def sample_views(
 
 
 def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_hu, max_window_hu):
-# def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_hu, max_window_hu, rotate_angle):
     assert image.ndim == 3
 
     # spatial augmentations: random rescale, rotation and crop
@@ -205,7 +123,6 @@ def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_h
     shift = box[0]
     voxels = voxels - shift
     anchor_voxel = anchor_voxel - shift
-    # return image, voxels
 
     # intensity augmentations
     if random.uniform(0, 1) < 0.5:

@@ -16,7 +16,8 @@ def select_from_pyramid(
     Returns:
         torch.Tensor: tensor of shape ``(n, \sum_i c_i)``
     """
-    return torch.cat([x.moveaxis(0, -1)[(indices // 2 ** i).unbind(1)] for i, x in enumerate(feature_pyramid)], dim=1)
+    s = torch.cat([x.moveaxis(0, -1)[(indices // 2 ** i).unbind(1)] for i, x in enumerate(feature_pyramid)], dim=1)
+    return s
 
 
 def sum_pyramid_channels(base_channels: int, num_scales: int):

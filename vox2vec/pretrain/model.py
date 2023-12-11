@@ -84,6 +84,7 @@ class Vox2Vec(pl.LightningModule):
         loss_1 = torch.mean(-logits_12.diag() + torch.logsumexp(torch.cat([logits_11, logits_12], dim=1), dim=1))
         loss_2 = torch.mean(-logits_12.diag() + torch.logsumexp(torch.cat([logits_12.T, logits_22], dim=1), dim=1))
         loss = (loss_1 + loss_2) / 2
+        print('losses', loss_1, loss_2)
 
         self.log(f'pretrain/info_nce_loss', loss, on_epoch=True)
 

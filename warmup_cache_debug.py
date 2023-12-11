@@ -18,6 +18,7 @@ from vox2vec.processing import (
 )
 from vox2vec.utils.split import kfold
 from vox2vec.utils.data import VanillaDataset, ResizeByRandomSampling
+from tqdm import tqdm
 
 
 LABELS = {
@@ -106,7 +107,7 @@ class BTCV(pl.LightningDataModule):
             split: int,
             # num_splits: int = 5,
             num_splits: int = 2,
-            val_size: Union[float, int] = 1,
+            val_size: Union[float, int] = 0,
             train_size: Optional[Union[float, int]] = None,
             cache_to_ram: bool = True,
             random_state: int = 42
@@ -176,8 +177,8 @@ class BTCV(pl.LightningDataModule):
             prefetch_factor=self.prefetch_factor
         )
 
-    def val_dataloader(self) -> DataLoader:
-        return DataLoader(self.val_dataset, batch_size=None)
+    # def val_dataloader(self) -> DataLoader:
+    #     return DataLoader(self.val_dataset, batch_size=None)
 
-    def test_dataloader(self) -> DataLoader:
-        return DataLoader(self.test_dataset, batch_size=None)
+    # def test_dataloader(self) -> DataLoader:
+    #     return DataLoader(self.test_dataset, batch_size=None)
