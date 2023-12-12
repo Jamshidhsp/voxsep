@@ -63,7 +63,8 @@ class PretrainDataset(Dataset):
             spacing=lambda affine: tuple(np.abs(np.diag(affine[:3, :3]))),
         )
 
-        amos_ct_ids = AMOS(root=amos_dir).ids[:500]
+        # amos_ct_ids = AMOS(root=amos_dir).ids[:500]
+        amos_ct_ids = AMOS(root=amos_dir).ids[:]
         amos = Chain(
             AMOS(root=amos_dir),
             Filter.keep(amos_ct_ids),

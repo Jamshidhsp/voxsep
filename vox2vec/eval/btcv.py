@@ -55,10 +55,10 @@ class BTCVSource(Source):
         })
 
     def _image_nii(id_, _root):
-        print('root_label', _root)
+        # print('root_label', _root)
         file,  = Path(_root).glob(f'**/img{id_}.nii.gz')
         # file = str(next(Path(_root).glob(f'**/img{id_}.nii.gz'), None))
-        print('check_file', file)
+        # print('check_file', file)
         return nibabel.load(file)
 
     def _mask_nii(id_, _root):

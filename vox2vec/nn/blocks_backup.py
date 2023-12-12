@@ -3,7 +3,6 @@ import math
 import torch
 from torch import nn
 import torch.nn.functional as F
-from .iterative_normalization import IterNorm
 
 
 class ResBlock3d(nn.Module):
@@ -16,7 +15,6 @@ class ResBlock3d(nn.Module):
             nn.ReLU(),
             nn.Conv3d(in_channels, hidden_channels, **kwargs),
             nn.BatchNorm3d(hidden_channels),
-            # IterNorm(hidden_channels),
             nn.ReLU(),
             nn.Conv3d(hidden_channels, out_channels, **kwargs)
         )

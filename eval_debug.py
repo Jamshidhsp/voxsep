@@ -21,18 +21,18 @@ def parse_args():
     parser.add_argument('--btcv_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/btcv', required=False)
     parser.add_argument('--cache_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/cache', required=False)
     parser.add_argument('--ckpt', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/pretrained_models/vox2vec.pt', required=False)
-    parser.add_argument('--setup', default='from_scratch', required=False)
-    # parser.add_argument('--setup', default='probing', required=False)
+    # parser.add_argument('--setup', default='from_scratch', required=False)
+    parser.add_argument('--setup', default='probing', required=False)
     parser.add_argument('--log_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/logs', required=False)
 
     parser.add_argument('--split', type=int, default=0)
     parser.add_argument('--spacing', nargs='+', type=float, default=SPACING)
     parser.add_argument('--patch_size', nargs='+', type=int, default=PATCH_SIZE)
 
-    parser.add_argument('--batch_size', type=int, default=1)
-    parser.add_argument('--num_workers', type=int, default=7)
+    parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--num_workers', type=int, default=8)
     parser.add_argument('--num_batches_per_epoch', type=int, default=300)
-    parser.add_argument('--max_epochs', type=int, default=150)
+    parser.add_argument('--max_epochs', type=int, default=10)
     parser.add_argument('--warmup_epochs', type=int, default=50)  # used only in finetuning setup
 
     parser.add_argument('--base_channels', type=int, default=BASE_CHANNELS)
