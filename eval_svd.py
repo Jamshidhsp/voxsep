@@ -15,6 +15,7 @@ from vox2vec.eval.svd_probing import SVD_Probing
 
 from vox2vec.utils.misc import save_json
 import numpy as np
+from tqdm import tqdm
 
 def parse_args():
     parser = ArgumentParser()
@@ -22,7 +23,7 @@ def parse_args():
     parser.add_argument('--dataset', default='btcv')
     parser.add_argument('--btcv_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/btcv', required=False)
     parser.add_argument('--cache_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/cache', required=False)
-    parser.add_argument('--ckpt', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/pretrained_models/vox2vec.pt', required=False)
+    parser.add_argument('--ckpt', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/vox2vec/server_results/checkpoints/iter/epoch=289-step=29000.ckpt', required=False)
     # parser.add_argument('--setup', default='from_scratch', required=False)
     parser.add_argument('--setup', default='backbone_only', required=False)
     parser.add_argument('--log_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/logs', required=False)
@@ -63,23 +64,28 @@ def main(args):
 
     in_channels = 1
     backbone = FPN3d(in_channels, args.base_channels, args.num_scales)
-    sd = torch.load(args.ckpt)
-    backbone.load_state_dict(sd)
+    # sd = torch.load(args.ckpt)
+    # backbone.load_state_dict(sd)
     if args.ckpt is not None:
-        backbone.load_state_dict(torch.load(args.ckpt))
+        # backbone.load_state_dict(torch.load(args.ckpt['state_dict']))
+
+        sd = torch.load(args.ckpt)['state_dict']
+        modified_state_dict = {k[len("backbone."):]: v for k, v in sd.items() if k.startswith("backbone.")}
+        backbone.load_state_dict(modified_state_dict)
+
         backbone = backbone.cuda()
 
     if args.setup == 'probing': 
         heads = [
             FPNLinearHead(args.base_channels, args.num_scales, num_classes),
-            FPNNonLinearHead(args.base_channels, args.num_scales, num_classes)
+            # FPNNonLinearHead(args.base_channels, args.num_scales, num_classes)
     ]
         head_linear = heads[0].cuda()
 
         i=0
         latents = []
         for batch in datamodule.train_dataloader():
-            while i<2:    
+            while i<10:    
                 images = batch[0]
                 latent = backbone(images.cuda(non_blocking=True))
                 x_linear = head_linear(latent)
@@ -116,28 +122,40 @@ def main(args):
 
     if args.setup == 'backbone_only': 
         backbone = backbone.cuda()
+        backbone.eval()
         i=0
         latents = []
-        for batch in datamodule.train_dataloader():
-            while i<2:
-                images = batch[0]
-                output = backbone(images.cuda(non_blocking=True))
-                
-                print(i)
-                latents.append(output[5].view(output[5].size(0), -1))
-                i+=1
+        with torch.no_grad():
+            for batch in tqdm(datamodule.train_dataloader()):
+                # while i<500:
+                images = batch[0]#.unsqueeze(0)
+                output = backbone(images.cuda(non_blocking=True))[1]
+                latents.append(output.view(output.size(0), -1).cpu())
+                torch.cuda.empty_cache()
+        torch.cuda.empty_cache()
         latents = torch.cat(latents, dim=0)
         z = torch.nn.functional.normalize(latents, dim=1)
-        z = z.cpu().detach().numpy()
-        print('z.shape', z.shape)
-        z = np.transpose(z)
-        c = np.cov(z)
-        print('c.shape', c.shape)
+        print("z.shape", z.shape)
+        # z = z.cpu().detach().numpy()
+        # print('z.shape', z.shape)
+
+        z = torch.transpose(z, 0, 1)
+        c = torch.cov(z)
+        rank = torch.linalg.matrix_rank(c)
+        print('rank', rank)
+
+        # z = z.cpu().detach().numpy()
+        # c = c.cpu().detach().numpy()
+
+
+        # c = np.transpose(c)
+        # c = np.cov(z)
+        # print('c.shape', c.shape)
         # rank = np.linalg.matrix_rank(c, 1e-8)
-        rank = np.linalg.matrix_rank(c)
-        print('convariance matrix rank is', rank )
-        _, d, _ = np.linalg.svd(c)
-        print('d', d)
+        # rank = np.linalg.matrix_rank(c)
+        # print('convariance matrix rank is', rank )
+        # _, d, _ = np.linalg.svd(c)
+        # print('d', d)
 
         
 if __name__ == '__main__':

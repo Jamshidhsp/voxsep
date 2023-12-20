@@ -30,6 +30,33 @@ class ResBlock3d(nn.Module):
         return self.layers(x) + self.skip(x)
 
 
+
+
+class ResBlock3d_IterNorm(nn.Module):
+    def __init__(self, in_channels, out_channels, **kwargs):
+        super().__init__()
+
+        hidden_channels = min(in_channels, out_channels)
+        self.layers = nn.Sequential(
+            nn.BatchNorm3d(in_channels),
+            nn.ReLU(),
+            nn.Conv3d(in_channels, hidden_channels, **kwargs),
+            # nn.BatchNorm3d(hidden_channels),
+            IterNorm(hidden_channels),
+            nn.ReLU(),
+            nn.Conv3d(hidden_channels, out_channels, **kwargs)
+        )
+
+        if in_channels != out_channels:
+            self.skip = nn.Conv3d(in_channels, out_channels, kernel_size=1)
+        else:
+            self.skip = nn.Identity()
+
+    def forward(self, x):
+        return self.layers(x) + self.skip(x)
+
+
+
 class StackMoreLayers(nn.Module):
     def __init__(self, layer, channels, **kwargs):
         super().__init__()
