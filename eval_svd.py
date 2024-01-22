@@ -17,6 +17,8 @@ from vox2vec.utils.misc import save_json
 import numpy as np
 from tqdm import tqdm
 
+torch.manual_seed(42)
+
 def parse_args():
     parser = ArgumentParser()
     
@@ -24,8 +26,12 @@ def parse_args():
     parser.add_argument('--btcv_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/btcv', required=False)
     parser.add_argument('--cache_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/cache', required=False)
     parser.add_argument('--ckpt', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/vox2vec/server_results/checkpoints/iter/epoch=289-step=29000.ckpt', required=False)
-    # parser.add_argument('--setup', default='from_scratch', required=False)
-    parser.add_argument('--setup', default='backbone_only', required=False)
+    
+    # parser.add_argument('--ckpt', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/vox2vec/server_results/checkpoints/normal/epoch=299-step=30000.ckpt', required=False)
+
+    
+    parser.add_argument('--setup', default='probing', required=False)
+    # parser.add_argument('--setup', default='backbone_only', required=False)
     parser.add_argument('--log_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/logs', required=False)
 
     parser.add_argument('--split', type=int, default=0)
@@ -43,6 +49,9 @@ def parse_args():
 
     return parser.parse_args()
 
+def sum_pyramid_channels(base_channels: int, num_scales: int):
+    # return 16
+    return sum(base_channels * 2 ** i for i in range(num_scales))
 
 def main(args):
     if args.dataset == 'btcv':
@@ -82,65 +91,65 @@ def main(args):
     ]
         head_linear = heads[0].cuda()
 
-        i=0
+        
         latents = []
-        for batch in datamodule.train_dataloader():
-            while i<10:    
-                images = batch[0]
-                latent = backbone(images.cuda(non_blocking=True))
-                x_linear = head_linear(latent)
-                print(i)
-                latents.append(x_linear)
-                i+=1
-        latents = torch.cat(latents, dim=0)
+        with torch.no_grad():
+            for batch in datamodule.train_dataloader():
+                # while i<10:    
+                    images = batch[0]
+                    latent = backbone(images.cuda(non_blocking=True))
+                    x_linear = head_linear(latent)
+                    
+                    latents.append(x_linear)
+                    
+            latents = torch.cat(latents, dim=0)
+            latents = latents.view(latents.size(0), -1)
 
 
-    # model = Probing(backbone, *heads, patch_size=tuple(args.patch_size))
-    # callbacks = [
-    #     ModelCheckpoint(save_top_k=1, monitor='val/head_1_avg_dice_score', filename='best', mode='max'),
-    # ]
+            # latents = torch.cat(latents, dim=0)
+            print('latents_new.shape', latents.shape)
+            z = torch.nn.functional.normalize(latents, dim=1)
+            print("z.shape", z.shape)
+            # z = z.cpu().detach().numpy()
+            # print('z.shape', z.shape)
+            torch.cuda.empty_cache()
+            z = torch.transpose(z, 0, 1)
+        
 
-    # logger = TensorBoardLogger(
-    #     save_dir=args.log_dir,
-    #     name=f'eval/{args.dataset}/{args.setup}/split_{args.split}'
-    # )
+            c = torch.cov(z)
+            rank = torch.linalg.matrix_rank(c)
+            print('rank', rank)
 
 
-    # i=0
-    # latents = []
-    # for batch in datamodule.train_dataloader():
-    #     with torch.no_grad():
-    #         while i<2:
-                
-    #             images = batch[0]
-    #             output = model(images.cuda(non_blocking=True))
-    #             print(i)
-    #             latents.append(output[0])
-    #             i+=1
-    #     latents = torch.cat(latents, dim=0)
+
 
 
     if args.setup == 'backbone_only': 
         backbone = backbone.cuda()
         backbone.eval()
-        i=0
         latents = []
         with torch.no_grad():
             for batch in tqdm(datamodule.train_dataloader()):
-                # while i<500:
                 images = batch[0]#.unsqueeze(0)
                 output = backbone(images.cuda(non_blocking=True))[1]
-                latents.append(output.view(output.size(0), -1).cpu())
+                # print(' ', output.shape)
+                # latents.append(output.view(output.size(0), -1).cpu())
+                latents.append(output.view(output.size(0), -1))
+                # latents.append(output.view(-1))
+
                 torch.cuda.empty_cache()
         torch.cuda.empty_cache()
+        # latents = torch.cat(latents, dim=1)
         latents = torch.cat(latents, dim=0)
+        print('latents.shape', latents.shape)
         z = torch.nn.functional.normalize(latents, dim=1)
         print("z.shape", z.shape)
         # z = z.cpu().detach().numpy()
         # print('z.shape', z.shape)
-
+        torch.cuda.empty_cache()
         z = torch.transpose(z, 0, 1)
-        c = torch.cov(z)
+
+        c = torch.cov(z[:200])
         rank = torch.linalg.matrix_rank(c)
         print('rank', rank)
 

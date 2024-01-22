@@ -15,6 +15,7 @@ class ResBlock3d(nn.Module):
             nn.BatchNorm3d(in_channels),
             nn.ReLU(),
             nn.Conv3d(in_channels, hidden_channels, **kwargs),
+            # jamshid was here
             nn.BatchNorm3d(hidden_channels),
             # IterNorm(hidden_channels),
             nn.ReLU(),

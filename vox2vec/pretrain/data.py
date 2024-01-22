@@ -23,6 +23,9 @@ from vox2vec.processing import (
 )
 from vox2vec.utils.box import mask_to_bbox
 from vox2vec.utils.misc import is_diagonal
+# jamshid was here
+import math
+import torch.nn.functional as F
 
 
 def prepare_nlst_ids(nlst_dir, patch_size):
@@ -209,7 +212,7 @@ def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_h
     # return image, voxels
 
     # intensity augmentations
-    if random.uniform(0, 1) < 0.5:
+    if random.uniform(0, 1) < -0.5:
         if random.uniform(0, 1) < 0.5:
             # random gaussian blur in axial plane
             sigma = random.uniform(0.25, 1.5)
@@ -221,13 +224,161 @@ def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_h
             alpha = random.uniform(10.0, 30.0)
             image = gaussian_sharpen(image, sigma_1, sigma_2, alpha, axis=(0, 1))
 
-    if random.uniform(0, 1) < 0.5:
+    if random.uniform(0, 1) < -0.5:
         sigma_hu = random.uniform(0, 30)
         image = image + np.random.normal(0, sigma_hu, size=image.shape).astype('float32')
 
-    if random.uniform(0, 1) < 0.8:
+    if random.uniform(0, 1) < -0.8:
         window_hu = (random.uniform(max_window_hu[0], min_window_hu[0]),
                      random.uniform(min_window_hu[1], max_window_hu[1]))
     image = scale_hu(image, window_hu)
 
+# rotate
+    if random.uniform(0, 1) < -10.5:
+        angle = 5
+        image = rotate_volume(image, angle, axis='z')
+        voxels = rotate_voxels(voxels, angle, axis='z')
+    
+    
     return image, voxels
+
+
+
+
+import numpy as np
+import math
+from scipy.ndimage import affine_transform
+
+def rotate_volume(image, angle, axis='z'):
+    angle_rad = math.radians(angle)
+    if axis == 'x':
+        rotation_matrix = np.array([
+            [1, 0, 0],
+            [0, np.cos(angle_rad), -np.sin(angle_rad)],
+            [0, np.sin(angle_rad), np.cos(angle_rad)]
+        ])
+    elif axis == 'y':
+        rotation_matrix = np.array([
+            [np.cos(angle_rad), 0, np.sin(angle_rad)],
+            [0, 1, 0],
+            [-np.sin(angle_rad), 0, np.cos(angle_rad)]
+        ])
+    else:  # axis == 'z'
+        rotation_matrix = np.array([
+            [np.cos(angle_rad), -np.sin(angle_rad), 0],
+            [np.sin(angle_rad), np.cos(angle_rad), 0],
+            [0, 0, 1]
+        ])
+    rotated_image = affine_transform(image, rotation_matrix)
+
+    return rotated_image
+
+
+
+import numpy as np
+import math
+
+def rotate_voxels(point, angle, axis='z'):
+
+    angle_rad = math.radians(angle)
+
+    if axis == 'x':
+        rotation_matrix = np.array([
+            [1, 0, 0],
+            [0, np.cos(angle_rad), -np.sin(angle_rad)],
+            [0, np.sin(angle_rad), np.cos(angle_rad)]
+        ])
+    elif axis == 'y':
+        rotation_matrix = np.array([
+            [np.cos(angle_rad), 0, np.sin(angle_rad)],
+            [0, 1, 0],
+            [-np.sin(angle_rad), 0, np.cos(angle_rad)]
+        ])
+    else:  # axis == 'z'
+        rotation_matrix = np.array([
+            [np.cos(angle_rad), -np.sin(angle_rad), 0],
+            [np.sin(angle_rad), np.cos(angle_rad), 0],
+            [0, 0, 1]
+        ])
+    rotated_point = np.dot(rotation_matrix, point.T).T
+
+    return rotated_point
+
+
+
+
+
+
+# def rotate_volume(image, angle, axis='z'):
+
+#     # Convert angle to radians
+#     angle_rad = math.radians(angle)
+
+#     # Create affine transformation matrix for 3D rotation
+#     # Adjusted to a 3x4 matrix format
+#     if axis == 'x':
+#         affine_matrix = torch.tensor([
+#             [1, 0, 0, 0],
+#             [0, math.cos(angle_rad), -math.sin(angle_rad), 0],
+#             [0, math.sin(angle_rad), math.cos(angle_rad), 0]
+#         ], dtype=torch.float32)
+
+#     elif axis == 'y':
+#         affine_matrix = torch.tensor([
+#             [math.cos(angle_rad), 0, math.sin(angle_rad), 0],
+#             [0, 1, 0, 0],
+#             [-math.sin(angle_rad), 0, math.cos(angle_rad), 0]
+#         ], dtype=torch.float32)
+
+#     else:  # 'z'
+#         affine_matrix = torch.tensor([
+#             [math.cos(angle_rad), -math.sin(angle_rad), 0, 0],
+#             [math.sin(angle_rad), math.cos(angle_rad), 0, 0],
+#             [0, 0, 1, 0]
+#         ], dtype=torch.float32)
+
+#     image = image.unsqueeze(0).unsqueeze(0)
+
+#     # Create grid for affine transformation
+#     D, H, W = image.shape[2], image.shape[3], image.shape[4]
+#     grid_size = torch.Size([1, 1, D, H, W])
+#     grid = F.affine_grid(affine_matrix.unsqueeze(0), grid_size, align_corners=True)
+
+#     # Apply the transformation
+#     rotated_image = F.grid_sample(image, grid, align_corners=True)
+
+#     # Remove added batch and channel dimensions
+#     rotated_image = rotated_image.squeeze(0).squeeze(0)
+
+#     return rotated_image
+
+
+
+
+# def rotate_voxels(voxels, angle, axis='z'):
+#     angle_rad = math.radians(angle)
+#     rot_x = torch.tensor([
+#         [1, 0, 0],
+#         [0, math.cos(angle_rad), -math.sin(angle_rad)],
+#         [0, math.sin(angle_rad), math.cos(angle_rad)]
+#     ])
+#     rot_y = torch.tensor([
+#         [math.cos(angle_rad), 0, math.sin(angle_rad)],
+#         [0, 1, 0],
+#         [-math.sin(angle_rad), 0, math.cos(angle_rad)]
+#     ])
+#     rot_z = torch.tensor([
+#         [math.cos(angle_rad), -math.sin(angle_rad), 0],
+#         [math.sin(angle_rad), math.cos(angle_rad), 0],
+#         [0, 0, 1]
+#     ])
+#     if axis == 'x':
+#         rotation_matrix = rot_x
+#     elif axis == 'y':
+#         rotation_matrix = rot_y
+#     else:
+#         rotation_matrix = rot_z    
+#     rotated_voxels = torch.matmul(rotation_matrix, voxels)
+
+#     return rotated_voxels
+

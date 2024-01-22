@@ -63,7 +63,43 @@ class Vox2Vec(pl.LightningModule):
 
     def _vox_to_vec(self, patches: torch.Tensor, voxels: Iterable[torch.Tensor]) -> torch.Tensor:
         feature_pyramid = self.backbone(patches)
-        return torch.cat([select_from_pyramid([x[j] for x in feature_pyramid], v) for j, v in enumerate(voxels)])
+#         selected_tensors = []
+
+# # Iterate over the elements of voxels and feature_pyramid simultaneously
+#         for j, v in enumerate(voxels):
+#             selected_elements = [x[j] for x in feature_pyramid]
+#             selected_tensor = select_from_pyramid(selected_elements, v)
+#             selected_tensors.append(selected_tensor)
+
+#         # Concatenate the selected tensors along the default dimension (dimension 0)
+#         result = torch.cat(selected_tensors)
+#         return result
+
+
+        # return torch.cat([select_from_pyramid([x[j] for x in feature_pyramid], v) for j, v in enumerate(voxels)])
+
+        # Initialize an empty list to store the selected features for each voxel
+        selected_features = []
+
+# Iterate over each voxel and its index
+        for j, v in enumerate(voxels):
+    # For each voxel, select the corresponding features from the feature pyramid
+            features_for_voxel = [x[j] for x in feature_pyramid]
+    
+    # Use the select_from_pyramid function to process these features
+            selected_feature = select_from_pyramid(features_for_voxel, v)
+    
+    # Append the processed features to the list
+            selected_features.append(selected_feature)
+
+# Concatenate all the selected features along the specified dimension
+            concatenated_features = torch.cat(selected_features)
+
+        return concatenated_features
+
+
+
+
 
     def training_step(self, batch, batch_idx):
         """Computes Info-NCE loss.
@@ -73,22 +109,24 @@ class Vox2Vec(pl.LightningModule):
         assert self.backbone.training
         assert self.proj_head.training
 
-        embeds_1 = self.proj_head(self._vox_to_vec(patches_1, voxels_1))
-        embeds_2 = self.proj_head(self._vox_to_vec(patches_2, voxels_2))
+        with torch.no_grad():
+            embeds_1 = self.proj_head(self._vox_to_vec(patches_1, voxels_1))
+            print(embeds_1.shape)
+        # embeds_2 = self.proj_head(self._vox_to_vec(patches_2, voxels_2))
 
-        logits_11 = torch.matmul(embeds_1, embeds_1.T) / self.temp
-        logits_11.fill_diagonal_(float('-inf'))
-        logits_12 = torch.matmul(embeds_1, embeds_2.T) / self.temp
-        logits_22 = torch.matmul(embeds_2, embeds_2.T) / self.temp
-        logits_22.fill_diagonal_(float('-inf'))
-        loss_1 = torch.mean(-logits_12.diag() + torch.logsumexp(torch.cat([logits_11, logits_12], dim=1), dim=1))
-        loss_2 = torch.mean(-logits_12.diag() + torch.logsumexp(torch.cat([logits_12.T, logits_22], dim=1), dim=1))
-        loss = (loss_1 + loss_2) / 2
-        print('losses', loss_1, loss_2)
+        # logits_11 = torch.matmul(embeds_1, embeds_1.T) / self.temp
+        # logits_11.fill_diagonal_(float('-inf'))
+        # logits_12 = torch.matmul(embeds_1, embeds_2.T) / self.temp
+        # logits_22 = torch.matmul(embeds_2, embeds_2.T) / self.temp
+        # logits_22.fill_diagonal_(float('-inf'))
+        # loss_1 = torch.mean(-logits_12.diag() + torch.logsumexp(torch.cat([logits_11, logits_12], dim=1), dim=1))
+        # loss_2 = torch.mean(-logits_12.diag() + torch.logsumexp(torch.cat([logits_12.T, logits_22], dim=1), dim=1))
+        # loss = (loss_1 + loss_2) / 2
+        # print('losses', loss_1, loss_2)
 
-        self.log(f'pretrain/info_nce_loss', loss, on_epoch=True)
+        # self.log(f'pretrain/info_nce_loss', loss, on_epoch=True)
 
-        return loss
+        # return loss
 
     def validation_step(self, batch, batch_idx):
         pass

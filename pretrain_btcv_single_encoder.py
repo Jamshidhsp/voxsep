@@ -14,7 +14,7 @@ from vox2vec.pretrain.data import PretrainDataset
 from vox2vec.utils.data import ResizeByRandomSampling
 from vox2vec.eval.btcv import BTCV
 # from vox2vec.nn import FPN3d, FPNLinearHead, FPNNonLinearHead
-from vox2vec.pretrain.model import Vox2Vec
+from vox2vec.pretrain.model_modified import Vox2Vec
 from vox2vec.eval.online_probing import OnlineProbing
 
 from vox2vec.nn import MySimpleEncoder, SimpleLinearHead, SimpleNonLinearHead

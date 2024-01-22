@@ -57,8 +57,8 @@ class FPN3d(nn.Module):
 
         self.left_blocks = nn.ModuleList(left_blocks)
         self.down_blocks = nn.ModuleList(down_blocks)
-        # self.bottom_block = StackMoreLayers(ResBlock3d, [c] * (num_blocks + 1), kernel_size=3, padding=1)
-        self.bottom_block = StackMoreLayers(ResBlock3d_IterNorm, [c] * (num_blocks + 1), kernel_size=3, padding=1)
+        self.bottom_block = StackMoreLayers(ResBlock3d, [c] * (num_blocks + 1), kernel_size=3, padding=1)
+        # self.bottom_block = StackMoreLayers(ResBlock3d_IterNorm, [c] * (num_blocks + 1), kernel_size=3, padding=1)
         self.up_blocks = nn.ModuleList(up_blocks)
         self.skip_blocks = nn.ModuleList(skip_blocks)
         self.right_blocks = nn.ModuleList(right_blocks)
