@@ -212,7 +212,7 @@ def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_h
     # return image, voxels
 
     # intensity augmentations
-    if random.uniform(0, 1) < -0.5:
+    if random.uniform(0, 1) < 0.5:
         if random.uniform(0, 1) < 0.5:
             # random gaussian blur in axial plane
             sigma = random.uniform(0.25, 1.5)
@@ -224,11 +224,11 @@ def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_h
             alpha = random.uniform(10.0, 30.0)
             image = gaussian_sharpen(image, sigma_1, sigma_2, alpha, axis=(0, 1))
 
-    if random.uniform(0, 1) < -0.5:
+    if random.uniform(0, 1) < 0.5:
         sigma_hu = random.uniform(0, 30)
         image = image + np.random.normal(0, sigma_hu, size=image.shape).astype('float32')
 
-    if random.uniform(0, 1) < -0.8:
+    if random.uniform(0, 1) < 0.8:
         window_hu = (random.uniform(max_window_hu[0], min_window_hu[0]),
                      random.uniform(min_window_hu[1], max_window_hu[1]))
     image = scale_hu(image, window_hu)
