@@ -11,6 +11,7 @@ import pytorch_lightning as pl
 
 from vox2vec.nn import Lambda
 from vox2vec.nn.functional import select_from_pyramid, sum_pyramid_channels
+from vox2vec.nn import FPNLinearHead
 
 # augmentation samples
 from vox2vec.pretrain.my_transormations import sample_view
@@ -92,7 +93,13 @@ class Vox2Vec(pl.LightningModule):
 
     def global_contrastive_loss(self, patches: torch.Tensor) -> torch.Tensor:
         feature_pyramid = self.backbone(patches)
-        feature_map = feature_pyramid[3][0]
+        
+        
+        
+        test = FPNLinearHead(feature_pyramid)
+        # feature_map = feature_pyramid[3][0]
+        
+        feature_map = feature_pyramid[0][0]
         # feature_map = torch.mean(feature_map, axis=0)
         # return feature_map.flatten()
         return feature_map.view(feature_map.size(0), -1)
