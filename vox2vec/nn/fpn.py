@@ -94,6 +94,7 @@ class FPNLinearHead(nn.Module):
 
         self.layers = nn.ModuleList([
             nn.Conv3d(base_channels * 2 ** i, num_classes, kernel_size=1, bias=(i == 0))
+            # nn.Conv3d(base_channels * 1 ** i, num_classes, kernel_size=1, bias=(i == 0))
             for i in range(num_scales)
         ])
         self.up = nn.Upsample(scale_factor=2, mode='nearest')
@@ -121,6 +122,7 @@ class FPNNonLinearHead(nn.Module):
         for _ in range(num_scales - 1):
             up_blocks.insert(0, nn.Sequential(
                 nn.Conv3d(c * 2, c, kernel_size=1),
+                # nn.Conv3d(c * 1, c, kernel_size=1),
                 nn.Upsample(scale_factor=2, mode='nearest')
             ))
             skip_blocks.insert(0, nn.Conv3d(c, c, kernel_size=1))

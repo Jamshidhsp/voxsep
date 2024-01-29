@@ -58,7 +58,7 @@ def sample_view(image,window_hu = WINDOW_HU, min_window_hu=MIN_WINDOW_HU, max_wi
     image = scale_hu(image, window_hu)
 
 # rotate
-    if random.uniform(0, 1) > -10.5:
+    if random.uniform(0, 1) > 10.5:
         angle = 5
         image = rot_rand(image)
     return image
