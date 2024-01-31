@@ -179,7 +179,7 @@ def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_h
 
     # intensity augmentations
     if random.uniform(0, 1) < 0.5:
-        if random.uniform(0, 1) < 0.5:
+        if random.uniform(0, 1) < 10:
             # random gaussian blur in axial plane
             sigma = random.uniform(0.25, 1.5)
             image = gaussian_filter(image, sigma, axis=(0, 1))
