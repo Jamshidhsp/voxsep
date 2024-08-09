@@ -186,22 +186,22 @@ class Vox2Vec(pl.LightningModule):
         embeds_negative = self.queue.get().to(embeds_positive.device)
         
 
-        anchors = F.normalize(embeds_anchor, p=2, dim=1)
-        positives = F.normalize(embeds_positive, p=2, dim=2)
-        negatives = F.normalize(embeds_negative, p=2, dim=1)
+        embeds_anchor = F.normalize(embeds_anchor, p=2, dim=1)
+        embeds_positive = F.normalize(embeds_positive, p=2, dim=2)
+        embeds_negative = F.normalize(embeds_negative, p=2, dim=1)
 
-        # Compute similarities with positives
+        # Compute similarities with embeds_positive
         running_loss = 0
         # This results in a tensor of shape (bs, 20)
-        pos_similarities = torch.bmm(positives, anchors.unsqueeze(2)).squeeze(2) / self.temperature
+        pos_similarities = torch.bmm(embeds_positive, embeds_anchor.unsqueeze(2)).squeeze(2) / self.temperature
 
-        # Compute similarities with negatives
+        # Compute similarities with embeds_negative
         # This results in a tensor of shape (bs, 65000)
-        neg_similarities = torch.mm(anchors, negatives.T) / self.temperature
+        neg_similarities = torch.mm(embeds_anchor, embeds_negative.T) / self.temperature
 
         # Calculate the logits
         logits = torch.cat([pos_similarities, neg_similarities], dim=1)  # Shape (bs, 20 + 65000)
-        labels = torch.zeros(logits.size(0), dtype=torch.long).to(anchors.device)  # Targets are the first 20 entries
+        labels = torch.zeros(logits.size(0), dtype=torch.long).to(embeds_anchor.device)  # Targets are the first 20 entries
 
         # Compute log_softmax (for numerical stability)
         log_probs = F.log_softmax(logits, dim=1)
