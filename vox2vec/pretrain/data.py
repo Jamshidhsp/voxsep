@@ -153,6 +153,8 @@ class PretrainDataset(Dataset):
         
         
         # return patches_1, patches_1_positive, voxels_1, voxels_2
+        # print(len(positive_voxels))
+        # assert (positive_voxels.size(1))==20
         return patches_1, patches_1_positive, anchor_voxel_1, positive_voxels, negative_voxels
 
 
@@ -187,8 +189,8 @@ def sample_views(
     indices = np.where(valid)[0]
 
     num_negative = max_num_voxels
-    num_neighbors = 20
-    anchor_id = random.choice(np.arange(len(indices)))
+    num_neighbors = 2
+    anchor_id = random.choice(np.arange(len(indices)-num_negative-1))
     # anchor_id = random.choice(indices[:-num_neighbors])  # (3,)
     positive_voxels = roi_voxels_1[indices[anchor_id:anchor_id+num_neighbors]] 
     negative_voxels = roi_voxels_1[np.random.choice(indices, num_negative, replace=False)]    

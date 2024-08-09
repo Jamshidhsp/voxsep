@@ -132,8 +132,9 @@ class Vox2Vec(pl.LightningModule):
 
 
 
-        self.temperature = torch.nn.Parameter(torch.tensor(0.9))
-        self.temp = 1.0
+        # self.temperature = torch.nn.Parameter(torch.tensor(0.9))
+        self.temperature = 0.9
+        # self.temp = 1.0
         self.lr = lr
         self.queue = Queue(max_size=65000, embedding_size=proj_dim)
 
@@ -147,7 +148,7 @@ class Vox2Vec(pl.LightningModule):
 
     @torch.no_grad()
     def momentum_update(self):
-        momentum = 0.9
+        momentum = 0.99
         with torch.no_grad():
             for param_q, param_k in zip(self.backbone.parameters(), self.backbone_key.parameters()):
                 param_k.data = param_k.data * momentum + param_q.data * (1. - momentum)
@@ -177,7 +178,7 @@ class Vox2Vec(pl.LightningModule):
         anchor_voxel_1 = [voxels.view(1, 3) for voxels in anchor_voxel_1]
         embeds_anchor = self.proj_head(self._vox_to_vec(patches_1, anchor_voxel_1))
         bs = embeds_anchor.size(0)
-        embeds_positive = [self.proj_head(self._vox_to_vec(patches_1, [voxels])) for voxels in positive_voxels]
+        embeds_positive = [self.proj_head(self._vox_to_vec(patches_1_positive, [voxels])) for voxels in positive_voxels]
         embeds_positive = [embed[None, :, : ] for embed in embeds_positive]
         embeds_positive = torch.cat(embeds_positive, dim=0) #(bs, num_positive, proj_dim)
         
@@ -191,7 +192,6 @@ class Vox2Vec(pl.LightningModule):
 
         # Compute similarities with positives
         running_loss = 0
-        loss_list = []
         # This results in a tensor of shape (bs, 20)
         pos_similarities = torch.bmm(positives, anchors.unsqueeze(2)).squeeze(2) / self.temperature
 
