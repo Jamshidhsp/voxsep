@@ -88,24 +88,7 @@ class Vox2Vec(pl.LightningModule):
             # lr: float = 3e-4,
             lr: float = 5e-5,
     ):
-        """vox2vec model.
 
-        Args:
-            backbone (nn.Module):
-                Takes an image of size ``(n, c, h, w, d)`` and returns a feature pyramid of sizes
-                ``[(n, c_b, h_b, w_b, d_b), (n, c_b * 2, h_b // 2, w_b // 2, d_b // 2), ...]``,
-                where ``c_b = base_channels`` and ``(h_b, w_b, d_b) = (h, w, d)``.
-            base_channels (int):
-                A number of channels in the base of the output feature pyramid.
-            num_scales (int):
-                A number of feature pyramid levels.
-            proj_dim (int, optional):
-                The output dimensionality of the projection head. Defaults to 128.
-            temp (float, optional):
-                Info-NCE loss temperature. Defaults to 0.1.
-            lr (float, optional):
-                Learning rate. Defaults to 3e-4.
-        """
         super().__init__()
 
         self.save_hyperparameters(ignore='backbone')
@@ -149,7 +132,7 @@ class Vox2Vec(pl.LightningModule):
 
 
 
-        # self.temp = torch.nn.Parameter(torch.tensor(0.9))
+        self.temperature = torch.nn.Parameter(torch.tensor(0.9))
         self.temp = 1.0
         self.lr = lr
         self.queue = Queue(max_size=65000, embedding_size=proj_dim)
@@ -173,48 +156,6 @@ class Vox2Vec(pl.LightningModule):
         
 
 
-    def neighboring_sampling(self, voxels_list):
-        step = 5
-        positive_list_all = []
-        negative_list_all = []
-        
-        for i in range(len(voxels_list)):
-            voxels = voxels_list[i]
-            positive_list = []
-            negative_list = []
-            voxels_numpy = voxels.cpu().numpy()
-            counter = 0
-            while counter < max_sampling:  
-                random_sample_index = np.random.randint(voxels.shape[0], size=1)
-                mask = np.all(voxels_numpy[:, :2]==voxels_numpy[:, :2], axis=1)
-                # mask=True
-
-                
-                valid_1_1 = np.all((voxels_numpy >= voxels[random_sample_index].cpu().numpy() - step) & (voxels_numpy < voxels[random_sample_index].cpu().numpy() + step), axis=1)
-                # valid_1_2 = np.all((voxels_numpy >= voxels[random_sample_index].cpu().numpy() + step), axis=1)
-                valid_1 = mask & valid_1_1
-                valid_1 = np.where(valid_1)[0]
-                # valid_2 = np.where(valid_1_2)
-
-
-                
-
-
-
-                if len(valid_1) >= num_positives:
-                    positive_indices = np.random.choice(valid_1, num_positives, replace=False)
-                    positive_voxels = voxels[positive_indices]
-                    positive_list.append(positive_voxels)
-                    # negative_list.append(negative_voxels)
-                    counter += 1
-                    
-            positive_list_all.append(torch.stack(positive_list))
-            # negative_list_all.append(torch.stack(negative_list))
-        
-        
-        return torch.stack(positive_list_all)
-
-    
     def training_step(self, batch, batch_idx):
         # patches_1, _, voxels_1, _ = batch['pretrain']
         patches_1, patches_1_positive, anchor_voxel_1, positive_voxels, negative_voxels = batch['pretrain']
@@ -223,59 +164,99 @@ class Vox2Vec(pl.LightningModule):
         assert self.backbone.training
         assert self.proj_head.training
 
-        # print('self.backbone_query', self.backbone.first_conv.weight[0, 0, 0])
-        # print('self.backbone_key', self.backbone_key.first_conv.weight[0, 0, 0])
+        assert self.backbone_key.training
+        assert self.proj_head_key.training
+        
         self.momentum_update()
 
-        # with torch.no_grad():
         with torch.no_grad():
-            # embeds_1_key = self.proj_head_key(self._vox_to_vec_key(patches_1, [voxel_list_positive.view(-1, 3)]))
             embeds_1_key = self.proj_head_key(self._vox_to_vec_key(patches_1, negative_voxels))
-        
-        # embeds_1 = self.proj_head(self._vox_to_vec(patches_1, [voxel_list_positive.view(-1, 3)]))
-        embeds_1 = self.proj_head(self._vox_to_vec(patches_1, positive_voxels))
-        num_positives = len(positive_voxels[0])
-        num_positives
-        embeds_1 = embeds_1.reshape(len(positive_voxels), -1, proj_dim )    #(batch, ,#num_poisitve, embedding)
+        self.queue.update(embeds_1_key)
 
-        # self.queue.update(embeds_1_key.view(-1, proj_dim))
+        
+        anchor_voxel_1 = [voxels.view(1, 3) for voxels in anchor_voxel_1]
+        embeds_anchor = self.proj_head(self._vox_to_vec(patches_1, anchor_voxel_1))
+        bs = embeds_anchor.size(0)
+        embeds_positive = [self.proj_head(self._vox_to_vec(patches_1, [voxels])) for voxels in positive_voxels]
+        embeds_positive = [embed[None, :, : ] for embed in embeds_positive]
+        embeds_positive = torch.cat(embeds_positive, dim=0) #(bs, num_positive, proj_dim)
+        
+        self.queue.shuffle() 
+        embeds_negative = self.queue.get().to(embeds_positive.device)
+        
+
+        anchors = F.normalize(embeds_anchor, p=2, dim=1)
+        positives = F.normalize(embeds_positive, p=2, dim=2)
+        negatives = F.normalize(embeds_negative, p=2, dim=1)
+
+        # Compute similarities with positives
         running_loss = 0
         loss_list = []
-        for i in range(embeds_1.size(0)):  #for the batch_size
-            emb1 = embeds_1[i] 
-            emb1_key = embeds_1_key[i] # shape is (num_posive, 128)
-            rnd_indx = np.random.randint(len(emb1))
-            # rnd_indx = 0
-            emb1 = F.normalize(emb1, dim=1)
-            shuffle_idx = np.arange((emb1.size(0)))[::-1]
-            positive_pair = emb1_key.flip(dims=[0])
-            self.queue.shuffle() 
-            negative_pair = self.queue.get().to(positive_pair.device)
+        # This results in a tensor of shape (bs, 20)
+        pos_similarities = torch.bmm(positives, anchors.unsqueeze(2)).squeeze(2) / self.temperature
+
+        # Compute similarities with negatives
+        # This results in a tensor of shape (bs, 65000)
+        neg_similarities = torch.mm(anchors, negatives.T) / self.temperature
+
+        # Calculate the logits
+        logits = torch.cat([pos_similarities, neg_similarities], dim=1)  # Shape (bs, 20 + 65000)
+        labels = torch.zeros(logits.size(0), dtype=torch.long).to(anchors.device)  # Targets are the first 20 entries
+
+        # Compute log_softmax (for numerical stability)
+        log_probs = F.log_softmax(logits, dim=1)
+
+        # Compute the loss as negative log likelihood loss
+        loss = F.nll_loss(log_probs, labels)
+
+        
+
+
+        # embeds_1 = self.proj_head(self._vox_to_vec(patches_1, positive_voxels))
+        # num_positives = len(positive_voxels[0])
+        # num_positives
+        # embeds_1 = embeds_1.reshape(len(positive_voxels), -1, proj_dim )    #(batch, ,#num_poisitve, embedding)
+
+        # self.queue.update(embeds_1_key.view(-1, proj_dim))
+        
+        
+        
+        
+        # for i in range(embeds_1.size(0)):  #for the batch_size
+        #     emb1 = embeds_1[i] 
+        #     emb1_key = embeds_1_key[i] # shape is (num_posive, 128)
+        #     rnd_indx = np.random.randint(len(emb1))
+        #     # rnd_indx = 0
+        #     emb1 = F.normalize(emb1, dim=1)
+        #     shuffle_idx = np.arange((emb1.size(0)))[::-1]
+        #     positive_pair = emb1_key.flip(dims=[0])
+        #     self.queue.shuffle() 
+        #     negative_pair = self.queue.get().to(positive_pair.device)
             
 
-            anchor = emb1[0]
-            positive_pairs = emb1[1:]
-            negative_pair = self.queue.get().to(positive_pair.device)
-            loss_positive = (positive_pairs-anchor).pow(2).sum(1)[0]
-            loss_negative = (negative_pair-anchor).pow(2).sum(1)[0]
-            # tb.add_scalar('Loss_positive', loss_positive, batch_idx)
-            # tb.add_scalar('Loss_negative', loss_negative, batch_idx)
-            if (batch_idx+1)%10==0:
+            # anchor = emb1[0]
+            # positive_pairs = emb1[1:]
+            # negative_pair = self.queue.get().to(positive_pair.device)
+            # loss_positive = (positive_pairs-anchor).pow(2).sum(1)[0]
+            # loss_negative = (negative_pair-anchor).pow(2).sum(1)[0]
+            # # tb.add_scalar('Loss_positive', loss_positive, batch_idx)
+            # # tb.add_scalar('Loss_negative', loss_negative, batch_idx)
+            # if (batch_idx+1)%10==0:
                 
-                tb.add_scalar('temp', self.temp, batch_idx)
-                # tb.add_histogram('loss_positive_logits', logits_positive[0], batch_idx)
+            #     tb.add_scalar('temp', self.temp, batch_idx)
+            #     # tb.add_histogram('loss_positive_logits', logits_positive[0], batch_idx)
                 # tb.add_histogram('loss_negative_logits', logits_negative[0], batch_idx)
                 # tb.add_histogram('conv1.weight', self.backbone.first_conv.weight[0, 0], batch_idx)
 
 
-            loss = F.relu(loss_positive - loss_negative+10)
-            print('losssss', loss, loss_positive, loss_negative)
-            loss_list.append(loss.detach().cpu().numpy())
-            running_loss+=loss
+            # loss = F.relu(loss_positive - loss_negative+10)
+            # print('losssss', loss, loss_positive, loss_negative)
+            # loss_list.append(loss.detach().cpu().numpy())
+        running_loss=loss
         # print(f'loss: {np.mean(np.array(loss_list))}')
 
         
-        return running_loss.mean()
+        return running_loss
 
     
     
