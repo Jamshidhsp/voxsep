@@ -188,9 +188,9 @@ def sample_views(
 
     num_negative = max_num_voxels
     num_neighbors = 20
-    anchor_id = random.choice(np.arange(len(indices)))
-    # anchor_id = random.choice(indices[:-num_neighbors])  # (3,)
-    positive_voxels = roi_voxels_1[indices[anchor_id:anchor_id+num_neighbors]] 
+    anchor_id = random.choice(indices[:-num_neighbors])  # (3,)
+
+    positive_voxels = roi_voxels_1[anchor_id:anchor_id+num_neighbors]
     negative_voxels = roi_voxels_1[np.random.choice(indices, num_negative, replace=False)]    
 
     # if len(indices) > max_num_voxels:
@@ -198,7 +198,7 @@ def sample_views(
 
     
     # return patch_1, patch_1_positive, roi_voxels_1_1[indices], roi_voxels_1_2[indices]
-    return patch_1, patch_1_positive, roi_voxels_1[indices[anchor_id]], positive_voxels, negative_voxels
+    return patch_1, patch_1_positive, roi_voxels_1[anchor_id], positive_voxels, negative_voxels
 
 
 def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_hu, max_window_hu):
@@ -244,6 +244,46 @@ def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_h
     
     return image, voxels, image_positive
 
+
+
+# def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_hu, max_window_hu):
+# # def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_hu, max_window_hu, rotate_angle):
+#     assert image.ndim == 3
+
+#     # spatial augmentations: random rescale, rotation and crop
+#     box = sample_box(image.shape, patch_size, anchor_voxel)
+#     image = crop_to_box(image, box, axis=(-3, -2, -1))
+#     shift = box[0]
+#     voxels = voxels - shift
+#     anchor_voxel = anchor_voxel - shift
+#     # return image, voxels
+
+#     # intensity augmentations
+#     if random.uniform(0, 1) < 0.5:
+#         if random.uniform(0, 1) < 0.5:
+#             # random gaussian blur in axial plane
+#             sigma = random.uniform(0.1, 0.5)
+#             image = gaussian_filter(image, sigma, axis=(0, 1))
+#         else:
+#             # random gaussian sharpening in axial plane
+#             sigma_1 = random.uniform(0.1, 0.)
+#             sigma_2 = 0.5
+#             alpha = random.uniform(10.0, 30.0)
+#             image = gaussian_sharpen(image, sigma_1, sigma_2, alpha, axis=(0, 1))
+
+#     if random.uniform(0, 1) < -0.5:
+#         sigma_hu = random.uniform(0, 30)
+#         image = image + np.random.normal(0, sigma_hu, size=image.shape).astype('float32')
+
+#     if random.uniform(0, 1) < -0.8:
+#         window_hu = (random.uniform(max_window_hu[0], min_window_hu[0]),
+#                      random.uniform(min_window_hu[1], max_window_hu[1]))
+#     image = scale_hu(image, window_hu)
+
+
+    
+    
+#     return image, voxels
 
 
 

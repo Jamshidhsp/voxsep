@@ -231,12 +231,12 @@ class Vox2Vec(pl.LightningModule):
         with torch.no_grad():
             # embeds_1_key = self.proj_head_key(self._vox_to_vec_key(patches_1, [voxel_list_positive.view(-1, 3)]))
             embeds_1_key = self.proj_head_key(self._vox_to_vec_key(patches_1, negative_voxels))
+            print(embeds_1_key.shape)
         
         # embeds_1 = self.proj_head(self._vox_to_vec(patches_1, [voxel_list_positive.view(-1, 3)]))
         embeds_1 = self.proj_head(self._vox_to_vec(patches_1, positive_voxels))
         num_positives = len(positive_voxels[0])
-        num_positives
-        embeds_1 = embeds_1.reshape(len(positive_voxels), -1, proj_dim )    #(batch, ,#num_poisitve, embedding)
+        embeds_1 = embeds_1.reshape(-1, num_positives, proj_dim )    #(batch, ,#num_poisitve, embedding)
 
         # self.queue.update(embeds_1_key.view(-1, proj_dim))
         running_loss = 0
@@ -268,8 +268,8 @@ class Vox2Vec(pl.LightningModule):
                 # tb.add_histogram('conv1.weight', self.backbone.first_conv.weight[0, 0], batch_idx)
 
 
-            loss = F.relu(loss_positive - loss_negative+10)
-            print('losssss', loss, loss_positive, loss_negative)
+            loss = F.relu(loss_positive - loss_negative+1)
+            # print('losssss', loss, loss_positive, loss_negative)
             loss_list.append(loss.detach().cpu().numpy())
             running_loss+=loss
         # print(f'loss: {np.mean(np.array(loss_list))}')
