@@ -36,7 +36,6 @@ class Queue:
         self.max_size = max_size
         self.embedding_size = embedding_size
         self.queue = torch.randn(max_size, embedding_size)
-        # self.queue = torch.ones((max_size, embedding_size))
         self.ptr = 0  
     @torch.no_grad()
     def enqueue(self, item):
@@ -59,7 +58,7 @@ class Queue:
     @torch.no_grad()
     def get(self):
         # q = F.normalize(self.queue.clone(), p=2, dim=1)
-        q = self.queue.clone()[:50]
+        q = self.queue.clone()[:]
         return q
 
     def size(self):
@@ -85,8 +84,8 @@ class Vox2Vec(pl.LightningModule):
             proj_dim: int = proj_dim,
             temp: float = 0.1,
             # temp: torch.nn.Parameter(torch.tensor(0.1)),
-            lr: float = 3e-4,
-            # lr: float = 5e-5,
+            # lr: float = 3e-4,
+            lr: float = 5e-5,
     ):
 
         super().__init__()
@@ -133,11 +132,11 @@ class Vox2Vec(pl.LightningModule):
 
 
 
-        # self.temperature = torch.nn.Parameter(torch.tensor(0.9))
-        self.temperature = 0.1
+        self.temperature = torch.nn.Parameter(torch.tensor(0.9))
+        # self.temperature = 1.0
         # self.temp = 1.0
         self.lr = lr
-        self.queue = Queue(max_size=600, embedding_size=proj_dim)
+        self.queue = Queue(max_size=20, embedding_size=proj_dim)
 
     def _vox_to_vec(self, patches: torch.Tensor, voxels: Iterable[torch.Tensor]) -> torch.Tensor:
         feature_pyramid = self.backbone(patches)[:]
@@ -193,7 +192,6 @@ class Vox2Vec(pl.LightningModule):
             embeds_1_key = self.proj_head_key(self._vox_to_vec_key(patches_1, negative_voxels))
         self.queue.update(embeds_1_key)
 
-# Instead of list comprehension, use torch.stack for better memory efficiency
         anchor_voxel_1 = torch.stack([voxels.view(1, 3) for voxels in anchor_voxel_1])
 
         with torch.no_grad():
@@ -220,27 +218,28 @@ class Vox2Vec(pl.LightningModule):
         # This results in a tensor of shape (bs, 20)
         pos_similarities = torch.bmm(embeds_positive, embeds_anchor.unsqueeze(2)).squeeze(2) / self.temperature
 
-        # Compute similarities with embeds_negative
-        # This results in a tensor of shape (bs, 65000)
+
         neg_similarities = torch.mm(embeds_anchor, embeds_negative.T) / self.temperature
 
-        # Calculate the logits
         logits = torch.cat([pos_similarities, neg_similarities], dim=1)  # Shape (bs, 20 + 65000)
         # labels = torch.zeros(logits.size(0), dtype=torch.long).to(embeds_anchor.device)
         labels_positive = torch.ones(pos_similarities.size()).to(pos_similarities.device)
         labels_negative = torch.zeros(neg_similarities.size()).to(pos_similarities.device) 
         labels = torch.cat([labels_positive, labels_negative], dim=1)  # Shape (bs, 20 + 65000)
-        # labels = torch.zeros(logits.size(), dtype=torch.long).to(embeds_anchor.device) 
+        # labels = torch.zeros(logits.size(0), dtype=torch.long).to(embeds_anchor.device) 
         # log_probs = F.log_softmax(logits, dim=1)
         log_probs = F.sigmoid(logits)
+        
+        # print(log_probs.shape, labels.shape)
 
         
-        # loss = F.nll_loss(log_probs, labels)
-        loss = F.binary_cross_entropy(log_probs, labels)    
+        # loss = F.nll_loss(log_probs, roi_voxels_1labels)
+        loss = F.mse_loss(log_probs, labels)
+        # loss = F.binary_cross_entropy(log_probs, labels)    
         running_loss=loss
-
+    
         global_step = str(self.epoch) + "_" + str(batch_idx)
-        metadata= ['anchor']*4 + ['positive']*40 + ['negative']*50
+        metadata= ['anchor']*4 + ['positive']*40 + ['negative']*embeds_negative.size(0)
         all_embeddings = torch.cat((embeds_anchor, embeds_positive.view(-1, embeds_positive.size(-1)), embeds_negative), dim=0)
 
     # tb.add_embedding(embeds_anchor, metadata=None, label_img=None, global_step=batch_idx, tag='Anchor_Embeddings')

@@ -185,6 +185,7 @@ logs_btcv_to_btcv
 evaluate_models_server/
 __MACOSX
 *.png
+*.sh
 *.json
 *.nii.gz
 dataset_backup

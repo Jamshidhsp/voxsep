@@ -31,7 +31,6 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import time
 import copy
-img_save_dir = "/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/img_save/"
 
 
 def prepare_nlst_ids(nlst_dir, patch_size):
