@@ -58,8 +58,8 @@ class Queue:
                 self.ptr = len(new_items) - remaining_space
     @torch.no_grad()
     def get(self):
-        q = F.normalize(self.queue.clone(), p=2, dim=1)
-        # q = self.queue.clone()
+        # q = F.normalize(self.queue.clone(), p=2, dim=1)
+        q = self.queue.clone()[:50]
         return q
 
     def size(self):
@@ -85,8 +85,8 @@ class Vox2Vec(pl.LightningModule):
             proj_dim: int = proj_dim,
             temp: float = 0.1,
             # temp: torch.nn.Parameter(torch.tensor(0.1)),
-            # lr: float = 3e-4,
-            lr: float = 5e-5,
+            lr: float = 3e-4,
+            # lr: float = 5e-5,
     ):
 
         super().__init__()
@@ -133,10 +133,10 @@ class Vox2Vec(pl.LightningModule):
 
 
         # self.temperature = torch.nn.Parameter(torch.tensor(0.9))
-        self.temperature = 0.9
+        self.temperature = 0.1
         # self.temp = 1.0
         self.lr = lr
-        self.queue = Queue(max_size=65000, embedding_size=proj_dim)
+        self.queue = Queue(max_size=600, embedding_size=proj_dim)
 
     def _vox_to_vec(self, patches: torch.Tensor, voxels: Iterable[torch.Tensor]) -> torch.Tensor:
         feature_pyramid = self.backbone(patches)[:]
@@ -158,6 +158,7 @@ class Vox2Vec(pl.LightningModule):
 
 
     def training_step(self, batch, batch_idx):
+        epoch = 0
         # patches_1, _, voxels_1, _ = batch['pretrain']
         patches_1, patches_1_positive, anchor_voxel_1, positive_voxels, negative_voxels = batch['pretrain']
   
@@ -201,13 +202,24 @@ class Vox2Vec(pl.LightningModule):
 
         # Calculate the logits
         logits = torch.cat([pos_similarities, neg_similarities], dim=1)  # Shape (bs, 20 + 65000)
-        labels = torch.zeros(logits.size(0), dtype=torch.long).to(embeds_anchor.device)  # Targets are the first 20 entries
+        # labels = torch.zeros(logits.size(0), dtype=torch.long).to(embeds_anchor.device)
+        labels_positive = torch.ones(pos_similarities.size()).to(pos_similarities.device)
+        labels_negative = torch.zeros(neg_similarities.size()).to(pos_similarities.device) 
+        labels = torch.cat([labels_positive, labels_negative], dim=1)  # Shape (bs, 20 + 65000)
+        # labels = torch.zeros(logits.size(), dtype=torch.long).to(embeds_anchor.device) 
+        # print('-----------------------------', pos_similarities.shape, neg_similarities.shape) 
+        # labels[pos_similarities.size(1)] = 1
+        # print(labels.shape)
 
         # Compute log_softmax (for numerical stability)
-        log_probs = F.log_softmax(logits, dim=1)
+        # log_probs = F.log_softmax(logits, dim=1)
+        log_probs = F.sigmoid(logits)
 
-        # Compute the loss as negative log likelihood loss
-        loss = F.nll_loss(log_probs, labels)
+        
+        # loss = F.nll_loss(log_probs, labels)
+        loss = F.binary_cross_entropy(log_probs, labels)
+        # print(self.backbone.)
+        # print(self.backbone.first_conv.weight[0][0][0])
 
         
 
@@ -255,7 +267,38 @@ class Vox2Vec(pl.LightningModule):
         running_loss=loss
         # print(f'loss: {np.mean(np.array(loss_list))}')
 
-        
+
+        # global_step = 
+        # Example after computing embeddings
+
+# Convert embeddings to 2D tensor and log them to TensorBoard
+# Assuming you have `embeds_anchor`, `embeds_positive`, and `embeds_negative`
+    # if batch_idx ==100:
+        global_step = str(epoch) + "_" + str(batch_idx)
+        metadata= ['anchor']*4 + ['positive']*40 + ['negative']*50
+    # print((embeds_anchor.shape, embeds_positive.view(-1, embeds_positive.size(-1)).shape, embeds_negative.shape))
+        all_embeddings = torch.cat((embeds_anchor, embeds_positive.view(-1, embeds_positive.size(-1)), embeds_negative), dim=0)
+# Add embeddings for anchors
+    # tb.add_embedding(embeds_anchor, metadata=None, label_img=None, global_step=batch_idx, tag='Anchor_Embeddings')
+
+# Add embeddings for positives
+    # tb.add_embedding(embeds_positive.view(-1, embeds_positive.size(-1)), metadata=None, label_img=None, global_step=batch_idx, tag='Positive_Embeddings')
+
+# Add embeddings for negatives
+    # tb.add_embedding(embeds_negative, metadata=None, label_img=None, global_step=batch_idx, tag='Negative_Embeddings')
+
+        tb.add_embedding(all_embeddings, metadata=metadata, label_img=None, global_step=global_step, tag='all_embedding')
+    
+
+        # metadata = labels_positive + labels_positive + labels_negative
+
+# Combine embeddings
+        # all_embeddings = torch.cat([embeds_anchor, embeds_positive, embeds_negative], dim=0)
+
+# Log embeddings with metadata
+        # tb.add_embedding(all_embeddings, metadata=metadata, global_step=0, tag='All_Embeddings')
+
+        epoch+=1
         return running_loss
 
     

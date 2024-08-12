@@ -189,7 +189,7 @@ def sample_views(
     indices = np.where(valid)[0]
 
     num_negative = max_num_voxels
-    num_neighbors = 2
+    num_neighbors = 10
     anchor_id = random.choice(np.arange(len(indices)-num_negative-1))
     # anchor_id = random.choice(indices[:-num_neighbors])  # (3,)
     positive_voxels = roi_voxels_1[indices[anchor_id:anchor_id+num_neighbors]] 
