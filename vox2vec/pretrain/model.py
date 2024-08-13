@@ -31,6 +31,26 @@ max_sampling = 1
 img_save_dir = '/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/img_save/'
 
 
+
+import torch
+import torch.nn as nn
+import math
+
+class VoxelPositionalEncoding(nn.Module):
+    def __init__(self, dim):
+        super(VoxelPositionalEncoding, self).__init__()
+        self.linear = nn.Linear(3, dim)
+        self.dim = dim
+    def forward(self, anchor_voxels, target_voxles):
+        voxels = anchor_voxels - target_voxles
+        voxels = voxels/128
+        pe = self.linear(voxels)
+        return pe
+
+
+
+
+
 class Queue:
     def __init__(self, max_size, embedding_size):
         self.max_size = max_size
@@ -95,6 +115,7 @@ class Vox2Vec(pl.LightningModule):
 
         self.backbone = backbone
         embed_dim = sum_pyramid_channels(base_channels, num_scales)
+        self.pe_size = embed_dim
         self.proj_head = nn.Sequential(
             nn.Linear(embed_dim, embed_dim),
             nn.BatchNorm1d(embed_dim),
@@ -130,7 +151,7 @@ class Vox2Vec(pl.LightningModule):
 
 
 
-
+        self.pe = VoxelPositionalEncoding(dim=self.pe_size)
 
         self.temperature = torch.nn.Parameter(torch.tensor(0.9))
         # self.temperature = 1.0
@@ -190,7 +211,8 @@ class Vox2Vec(pl.LightningModule):
         # embeds_negative = self.queue.get().to(embeds_positive.device)
         
         with torch.no_grad():
-            embeds_1_key = self.proj_head_key(self._vox_to_vec_key(patches_1, negative_voxels))
+            # embeds_1_key = self.proj_head_key(self._vox_to_vec_key(patches_1, negative_voxels))
+            embeds_1_key = self.proj_head_key((self._vox_to_vec_key(patches_1, negative_voxels)) + (self.pe(anchor_voxel_1.float(), negative_voxels.float())).view(-1, self.pe_size))
         self.queue.update(embeds_1_key)
 
         # anchor_voxel_1 = torch.stack([voxels.view(1, 3) for voxels in anchor_voxel_1])
@@ -201,7 +223,8 @@ class Vox2Vec(pl.LightningModule):
         # print('embeds_anchor.shape', embeds_anchor.shape)
 
         # embeds_positive = [self.proj_head(self._vox_to_vec(patches_1_positive, [voxels])) for voxels in positive_voxels]
-        embeds_positive = self.proj_head(self._vox_to_vec(patches_1_positive, positive_voxels))
+        # embeds_positive = self.proj_head(self._vox_to_vec(patches_1_positive, positive_voxels))
+        embeds_positive = self.proj_head((self._vox_to_vec(patches_1_positive, positive_voxels))+(self.pe(anchor_voxel_1.float(), positive_voxels.float())).view(-1, self.pe_size))
 
         # embeds_positive = torch.cat(embeds_positive, dim=0)  # (bs, num_positive, proj_dim)
 
@@ -223,7 +246,7 @@ class Vox2Vec(pl.LightningModule):
         # pos_similarities = torch.bmm(embeds_positive, embeds_anchor.unsqueeze(2)).squeeze(2) / self.temperature
         pos_similarities = torch.mm(embeds_anchor, embeds_positive.T)/self.temperature
 
-        neg_similarities = torch.mm(embeds_anchor, embeds_negative.T) / self.temperature
+        neg_similarities = torch.mm(embeds_anchor, embeds_1_key.T) / self.temperature
 
         logits = torch.cat([pos_similarities, neg_similarities], dim=1)  # Shape (bs, 20 + 65000)
         # labels = torch.zeros(logits.size(0), dtype=torch.long).to(embeds_anchor.device)
