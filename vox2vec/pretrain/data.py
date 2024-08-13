@@ -205,7 +205,9 @@ def sample_views(
     # positive_voxels = roi_voxels_1[indices[anchor_id:anchor_id+num_neighbors]]
     anchor_voxels =  roi_voxels_1[indices[anchor_id:anchor_id+1]]
     positive_voxels = adjusted_voxels[indices[anchor_id:anchor_id+1]]
-    negative_voxels = roi_voxels_1[np.random.choice(indices, num_negative, replace=False)]    
+    # positive_voxels = adjusted_voxels[indices[anchor_id:anchor_id+1]]
+    positive_voxels = adjusted_voxels[np.random.choice(indices[anchor_id+1: anchor_id+num_neighbors+1], num_neighbors, replace=False)]
+    negative_voxels = roi_voxels_1[np.random.choice(indices[(len(indices))//2:], num_negative, replace=False)]    
 
     
     # return patch_1, patch_1_positive, roi_voxels_1_1[indices], roi_voxels_1_2[indices]
