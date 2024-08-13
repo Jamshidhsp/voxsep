@@ -171,14 +171,6 @@ def sample_views(
                                          window_hu, min_window_hu, max_window_hu)
     
     patch_1_positive = MyAugmentation(patch_1_positive)
-    # patch_1_positive = rot_rand(patch_1)
-    # patch_2, roi_voxels_2, _ = sample_view(image, roi_voxels, anchor_voxel, patch_size,
-    #                                      window_hu, min_window_hu, max_window_hu)
-    # patch_2= patch_2.flip(dims=[-1])
-    # random_axis = np.random.randint(0, 3)
-    # patch_2= np.flip(patch_2, axis=[random_axis])
-
-  
 
     valid_1 = np.all((roi_voxels_1 >= 0) & (roi_voxels_1 < patch_size), axis=1)
     # valid_2 = np.all((roi_voxels_2 >= 0) & (roi_voxels_2 < patch_size), axis=1)

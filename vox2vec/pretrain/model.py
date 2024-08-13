@@ -75,6 +75,35 @@ class Queue:
 
 
 
+import torch
+import torch.nn as nn
+
+class SiameseMSELoss(nn.Module):
+    def __init__(self, margin: float = 1.0):
+        super(SiameseMSELoss, self).__init__()
+        self.margin = margin
+        self.mse_loss = nn.MSELoss()
+    
+    def forward(self, anchor: torch.Tensor, positive: torch.Tensor, negative: torch.Tensor) -> torch.Tensor:
+        
+        print(anchor.size(0), positive.size(0),negative.size(0))
+        assert anchor.size(0) == positive.size(0) == negative.size(0), "Batch sizes must match"
+        assert anchor.size(1) == positive.size(1) == negative.size(1), "Feature dimensions must match"
+        pos_distance = torch.norm(anchor - positive, p=2, dim=1)
+        pos_loss = torch.mean(pos_distance ** 2)
+        
+        neg_distance = torch.norm(anchor - negative, p=2, dim=1)
+        neg_loss = torch.mean(torch.clamp(self.margin - neg_distance, min=0) ** 2)
+        
+        loss = pos_loss + neg_loss
+        return loss
+    
+loss_fn = SiameseMSELoss(margin=1.0)
+
+
+
+
+
 class Vox2Vec(pl.LightningModule):
     def __init__(
             self,
@@ -202,7 +231,7 @@ class Vox2Vec(pl.LightningModule):
         embeds_positive = torch.cat(embeds_positive, dim=0)  # (bs, num_positive, proj_dim)
 
         self.queue.shuffle()
-        embeds_negative = self.queue.get().to(embeds_positive.device)
+        embeds_negative = self.queue.get().to(embeds_positive.device)[:4]
 
 
 
@@ -225,17 +254,22 @@ class Vox2Vec(pl.LightningModule):
         # labels = torch.zeros(logits.size(0), dtype=torch.long).to(embeds_anchor.device)
         labels_positive = torch.ones(pos_similarities.size()).to(pos_similarities.device)
         labels_negative = torch.zeros(neg_similarities.size()).to(pos_similarities.device) 
-        labels = torch.cat([labels_positive, labels_negative], dim=1)  # Shape (bs, 20 + 65000)
-        # labels = torch.zeros(logits.size(0), dtype=torch.long).to(embeds_anchor.device) 
-        # log_probs = F.log_softmax(logits, dim=1)
-        log_probs = F.sigmoid(logits)
+        # labels = torch.cat([labels_positive, labels_negative], dim=1)  # Shape (bs, 20 + 65000)
+        labels = torch.zeros(logits.size(0), dtype=torch.long).to(embeds_anchor.device) 
+        log_probs = F.log_softmax(logits, dim=1)
+        # log_probs = F.sigmoid(logits)
         
         # print(log_probs.shape, labels.shape)
 
         
-        # loss = F.nll_loss(log_probs, roi_voxels_1labels)
-        loss = F.mse_loss(log_probs, labels)
-        # loss = F.binary_cross_entropy(log_probs, labels)    
+        loss = F.nll_loss(log_probs, labels)
+        # loss = F.mse_loss(log_probs, labels)
+        # loss = F.binary_cross_entropy(log_probs, labels)
+        # loss = loss_fn(embeds_anchor, embeds_positive, embeds_negative)
+
+        # loss_pos = torch.sum(pos_similarities, dim=1)
+        # loss_neg = torch.sum(neg_similarities, dim=1)
+        # running_loss = F.relu(1 + loss_pos - loss_neg).mean()    
         running_loss=loss
     
         global_step = str(self.epoch) + "_" + str(batch_idx)
