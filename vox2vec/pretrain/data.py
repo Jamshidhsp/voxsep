@@ -14,6 +14,8 @@ from amid.lidc import LIDC
 from amid.nsclc import NSCLC
 from amid.midrc import MIDRC
 
+import scipy.ndimage
+
 from connectome import Chain, Transform, Filter, Apply, GroupBy, Merge, CacheToDisk
 from vox2vec.pretrain.my_transormations import get_non_overlapping_crops
 from vox2vec.pretrain.my_transormations import rot_rand
@@ -197,13 +199,14 @@ def sample_views(
     num_negative = max_num_voxels
     num_neighbors = 10
     anchor_id = random.choice(np.arange(len(indices)-num_negative-1))
-    # positive_voxels = roi_voxels_1[indices[anchor_id:anchor_id+num_neighbors]] 
+    # positive_voxels = roi_voxels_1[indices[anchor_id:anchor_id+num_neighbors]]
+    anchor_voxels =  roi_voxels_1[indices[anchor_id:anchor_id+1]]
     positive_voxels = adjusted_voxels[indices[anchor_id:anchor_id+1]]
     negative_voxels = roi_voxels_1[np.random.choice(indices, num_negative, replace=False)]    
 
     
     # return patch_1, patch_1_positive, roi_voxels_1_1[indices], roi_voxels_1_2[indices]
-    return patch_1, patch_1_positive, roi_voxels_1[indices[anchor_id]], positive_voxels, negative_voxels
+    return patch_1, patch_1_positive, anchor_voxels, positive_voxels, negative_voxels
 
 
 def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_hu, max_window_hu):
@@ -304,27 +307,8 @@ def rotate_patch(patch, rotation_type):
     elif rotation_type == 5:  
         return scipy.ndimage.rotate(patch, 270, axes=(0, 2), reshape=False, mode='nearest')
 
-# def random_rotation(patch, voxels):
-    
-#     rotation_type = np.random.randint(0, 6)
-#     rotated_patch = rotate_patch(patch, rotation_type)
-#     rotation_matrices = {
-#         0: np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]]), 
-#         1: np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]]), 
-#         2: np.array([[1, 0, 0], [0, 0, 1], [0, -1, 0]]), 
-#         3: np.array([[0, 0, 1], [0, 1, 0], [-1, 0, 0]]),  
-#         4: np.array([[-1, 0, 0], [0, 1, 0], [0, 0, -1]]), 
-#         5: np.array([[0, 0, -1], [0, 1, 0], [1, 0, 0]]),  
-#     }
-#     rotation_matrix = rotation_matrices[rotation_type]
-#     adjusted_voxels = np.dot(voxels, rotation_matrix.T)
 
 
-#     return rotated_patch, adjusted_voxels
-
-
-import numpy as np
-import scipy.ndimage
 
 def rotate_patch(patch, rotation_type):
     if rotation_type == 0:  

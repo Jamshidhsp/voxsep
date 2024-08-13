@@ -44,8 +44,8 @@ def parse_args():
 
     parser.add_argument('--spacing', nargs='+', type=float, default=SPACING)
     parser.add_argument('--patch_size', nargs='+', type=int, default=PATCH_SIZE)
-    parser.add_argument('--pretrain_batch_size', type=int, default=4)
-    parser.add_argument('--pretrain_num_workers', type=int, default=4)
+    parser.add_argument('--pretrain_batch_size', type=int, default=16)
+    parser.add_argument('--pretrain_num_workers', type=int, default=6)
     parser.add_argument('--probing_batch_size', type=int, default=2)
     parser.add_argument('--probing_num_workers', type=int, default=2)
     parser.add_argument('--num_batches_per_epoch', type=int, default=100)

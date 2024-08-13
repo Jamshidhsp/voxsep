@@ -193,11 +193,12 @@ class Vox2Vec(pl.LightningModule):
             embeds_1_key = self.proj_head_key(self._vox_to_vec_key(patches_1, negative_voxels))
         self.queue.update(embeds_1_key)
 
-        anchor_voxel_1 = torch.stack([voxels.view(1, 3) for voxels in anchor_voxel_1])
+        # anchor_voxel_1 = torch.stack([voxels.view(1, 3) for voxels in anchor_voxel_1])
         # positive_voxels = torch.stack([voxels.view(1, 3) for voxels in positive_voxels])
 
         with torch.no_grad():
             embeds_anchor = self.proj_head(self._vox_to_vec(patches_1, anchor_voxel_1))
+        # print('embeds_anchor.shape', embeds_anchor.shape)
 
         # embeds_positive = [self.proj_head(self._vox_to_vec(patches_1_positive, [voxels])) for voxels in positive_voxels]
         embeds_positive = self.proj_head(self._vox_to_vec(patches_1_positive, positive_voxels))
@@ -228,21 +229,21 @@ class Vox2Vec(pl.LightningModule):
         # labels = torch.zeros(logits.size(0), dtype=torch.long).to(embeds_anchor.device)
         labels_positive = torch.ones(pos_similarities.size()).to(pos_similarities.device)
         labels_negative = torch.zeros(neg_similarities.size()).to(pos_similarities.device) 
-        labels = torch.cat([labels_positive, labels_negative], dim=1)  # Shape (bs, 20 + 65000)
-        # labels = torch.zeros(logits.size(0), dtype=torch.long).to(embeds_anchor.device) 
-        # log_probs = F.log_softmax(logits, dim=1)
-        log_probs = F.sigmoid(logits)
+        # labels = torch.cat([labels_positive, labels_negative], dim=1)  # Shape (bs, 20 + 65000)
+        labels = torch.zeros(logits.size(0), dtype=torch.long).to(embeds_anchor.device) 
+        log_probs = F.log_softmax(logits, dim=1)
+        # log_probs = F.sigmoid(logits)
         
         # print(log_probs.shape, labels.shape)
 
         
-        # loss = F.nll_loss(log_probs, roi_voxels_1labels)
-        loss = F.mse_loss(log_probs, labels)
+        running_loss = F.nll_loss(log_probs, labels)
+        # loss = F.mse_loss(log_probs, labels)
         # loss = F.binary_cross_entropy(log_probs, labels)    
-        running_loss=loss
-    
+        # running_loss=loss
+        bs = labels.size(0)
         global_step = str(self.epoch) + "_" + str(batch_idx)
-        metadata= ['anchor']*4 + ['positive']*4 + ['negative']*embeds_negative.size(0)
+        metadata= ['anchor']*bs + ['positive']*bs + ['negative']*embeds_negative.size(0)
         all_embeddings = torch.cat((embeds_anchor, embeds_positive.view(-1, embeds_positive.size(-1)), embeds_negative), dim=0)
 
     # tb.add_embedding(embeds_anchor, metadata=None, label_img=None, global_step=batch_idx, tag='Anchor_Embeddings')
