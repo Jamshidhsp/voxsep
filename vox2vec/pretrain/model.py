@@ -236,8 +236,13 @@ class Vox2Vec(pl.LightningModule):
         
         # print(log_probs.shape, labels.shape)
 
+        loss_pos = torch.sum(pos_similarities, dim=1)
+        loss_neg = torch.sum(neg_similarities, dim=1)
+        running_loss = F.relu(1 + loss_pos - loss_neg).mean()
+
+
         
-        running_loss = F.nll_loss(log_probs, labels)
+        # running_loss = F.nll_loss(log_probs, labels)
         # loss = F.mse_loss(log_probs, labels)
         # loss = F.binary_cross_entropy(log_probs, labels)    
         # running_loss=loss
@@ -253,9 +258,9 @@ class Vox2Vec(pl.LightningModule):
 
 
     # tb.add_embedding(embeds_negative, metadata=None, label_img=None, global_step=batch_idx, tag='Negative_Embeddings')
-        if batch_idx+1 ==100:
-            tb.add_embedding(all_embeddings, metadata=metadata, label_img=None, global_step=global_step, tag='all_embedding')
-            self.epoch+=1
+        # if batch_idx+1 ==100:
+        #     tb.add_embedding(all_embeddings, metadata=metadata, label_img=None, global_step=global_step, tag='all_embedding')
+        #     self.epoch+=1
     
 
         # metadata = labels_positive + labels_positive + labels_negative

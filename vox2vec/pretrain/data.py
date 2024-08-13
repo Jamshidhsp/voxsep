@@ -142,9 +142,15 @@ class PretrainDataset(Dataset):
 
 
 
-        positive_voxels = [torch.tensor(voxels) for voxels in positive_voxels]
-        negative_voxels = [torch.tensor(voxels) for voxels in negative_voxels]
-        anchor_voxel_1 =  [torch.tensor(voxels) for voxels in anchor_voxel_1]
+        # positive_voxels = [torch.tensor(voxels) for voxels in positive_voxels]
+        # negative_voxels = [torch.tensor(voxels) for voxels in negative_voxels]
+        # anchor_voxel_1 =  [torch.tensor(voxels) for voxels in anchor_voxel_1]
+
+        positive_voxels = torch.stack([torch.tensor(voxels) for voxels in positive_voxels])
+        negative_voxels = torch.stack([torch.tensor(voxels) for voxels in negative_voxels])
+        anchor_voxel_1 = torch.stack([torch.tensor(voxels) for voxels in anchor_voxel_1])
+
+
         
         disp_0 = torch.cat((patches_1[0, 0, :, :, 16], patches_1_positive[0, 0, :, :, 16]), axis=1)
         disp_0 = disp_0.detach().cpu().numpy()
@@ -174,28 +180,25 @@ def sample_views(
     patch_1, roi_voxels_1, patch_1_positive = sample_view(image, roi_voxels, anchor_voxel, patch_size,
                                          window_hu, min_window_hu, max_window_hu)
     
-    patch_1_positive = MyAugmentation(patch_1_positive)
+    # patch_1_positive = MyAugmentation(patch_1_positive)
     
-    patch_1_positive, adjusted_voxels = random_rotation(patch_1_positive, roi_voxels_1)
+    # patch_1_positive, adjusted_voxels = random_rotation(patch_1_positive, roi_voxels_1)
     
-    # patch_1_positive = rot_rand(patch_1)
-    # patch_2, roi_voxels_2, _ = sample_view(image, roi_voxels, anchor_voxel, patch_size,
-    #                                      window_hu, min_window_hu, max_window_hu)
-    # patch_2= patch_2.flip(dims=[-1])
-    # random_axis = np.random.randint(0, 3)
-    # patch_2= np.flip(patch_2, axis=[random_axis])
-
-  
 
     valid_1 = np.all((roi_voxels_1 >= 0) & (roi_voxels_1 < patch_size), axis=1)
     # valid_2 = np.all((roi_voxels_2 >= 0) & (roi_voxels_2 < patch_size), axis=1)
-    valid_2 = np.all((adjusted_voxels >= 0) & (adjusted_voxels < patch_size), axis=1)
-    # valid_2 = True
+
+    # valid_2 = np.all((adjusted_voxels >= 0) & (adjusted_voxels < patch_size), axis=1)
+    valid_2 = True
     valid = valid_1 & valid_2
 
     assert valid.any()
     indices = np.where(valid)[0]
 
+    # selected_voxels = roi_voxels_1[indices]
+    patch_1_positive = MyAugmentation(patch_1_positive)
+    
+    patch_1_positive, adjusted_voxels = random_rotation(patch_1_positive, roi_voxels_1)
     num_negative = max_num_voxels
     num_neighbors = 10
     anchor_id = random.choice(np.arange(len(indices)-num_negative-1))
@@ -324,37 +327,121 @@ def rotate_patch(patch, rotation_type):
     elif rotation_type == 5:  
         return scipy.ndimage.rotate(patch, 270, axes=(0, 2), reshape=False, mode='nearest')
 
+# def random_rotation(patch, voxels):
+#     # Define patch center
+#     center = np.array(patch.shape) / 2
+    
+#     # Center voxels around the origin (relative to the patch)
+#     centered_voxels = voxels - center
+    
+#     # Randomly select a rotation type
+#     rotation_type = np.random.randint(0, 6)
+    
+#     # Rotate the patch
+#     rotated_patch = rotate_patch(patch, rotation_type)
+    
+#     # Define rotation matrices for different rotation types
+#     rotation_matrices = {
+#         0: np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]]), 
+#         1: np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]]), 
+#         2: np.array([[1, 0, 0], [0, 0, 1], [0, -1, 0]]), 
+#         3: np.array([[0, 0, 1], [0, 1, 0], [-1, 0, 0]]),  
+#         4: np.array([[-1, 0, 0], [0, 1, 0], [0, 0, -1]]), 
+#         5: np.array([[0, 0, -1], [0, 1, 0], [1, 0, 0]]),  
+#     }
+    
+#     # Apply the selected rotation matrix to the centered voxel coordinates
+#     rotation_matrix = rotation_matrices[rotation_type]
+#     adjusted_voxels = np.dot(centered_voxels, rotation_matrix.T)
+    
+#     # Shift voxels back to the original position relative to the patch
+#     adjusted_voxels += center
+#     adjusted_voxels = np.round(adjusted_voxels).astype(int)
+#     # Clip to ensure voxels are within bounds
+#     adjusted_voxels = np.clip(adjusted_voxels, 0, np.array(rotated_patch.shape) - 1)
+    
+#     return rotated_patch, adjusted_voxels
+
+
+
+
+
+# import torch
+# import numpy as np
+
+# def rotate_patch(patch, rotation_type):
+#     # Convert patch to PyTorch tensor
+#     patch_tensor = torch.tensor(patch).float()
+    
+#     # Define rotation matrices for fixed angles
+#     rotation_matrices = {
+#         0: torch.tensor([[1, 0, 0], [0, 0, -1], [0, 1, 0]]),   # 90° around z-axis
+#         1: torch.tensor([[1, 0, 0], [0, -1, 0], [0, 0, -1]]),  # 180° around z-axis
+#         2: torch.tensor([[1, 0, 0], [0, 0, 1], [0, -1, 0]]),   # 270° around z-axis
+#         3: torch.tensor([[0, 0, 1], [0, 1, 0], [-1, 0, 0]]),   # 90° around x-axis
+#         4: torch.tensor([[-1, 0, 0], [0, 1, 0], [0, 0, -1]]),  # 180° around x-axis
+#         5: torch.tensor([[0, 0, -1], [0, 1, 0], [1, 0, 0]]),   # 270° around x-axis
+#     }
+
+#     rotation_matrix = rotation_matrices[rotation_type]
+#     # Rotate the patch
+#     rotated_patch_tensor = torch.rot90(patch_tensor, k=(rotation_type % 4), dims=[1, 2])
+    
+#     return rotated_patch_tensor.numpy()
+
+import numpy as np
+import scipy.ndimage
+import torch
+
+def rotate_patch(patch, rotation_type):
+    
+    rotation_matrices = {
+        0: np.array([[0, 1, 0], [0, 0, 1], [1, 0, 0]]),   
+        1: np.array([[-1, 0, 0], [0, -1, 0], [0, 0, 1]]),  
+        2: np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]]),   
+        3: np.array([[0, 1, 0], [0, 0, 1], [-1, 0, 0]]),   
+        4: np.array([[-1, 0, 0], [0, 1, 0], [0, 0, -1]]),  
+        5: np.array([[0, -1, 0], [1, 0, 0], [0, 0, -1]]),  
+    }
+
+    rotation_matrix = rotation_matrices[rotation_type]
+    
+    
+    rotated_patch = scipy.ndimage.affine_transform(
+        patch, 
+        rotation_matrix, 
+        offset=0, 
+        order=1, 
+        mode='nearest'
+    )
+    
+    return rotated_patch
+
 def random_rotation(patch, voxels):
-    # Define patch center
+    
     center = np.array(patch.shape) / 2
-    
-    # Center voxels around the origin (relative to the patch)
     centered_voxels = voxels - center
-    
-    # Randomly select a rotation type
     rotation_type = np.random.randint(0, 6)
-    
-    # Rotate the patch
     rotated_patch = rotate_patch(patch, rotation_type)
     
-    # Define rotation matrices for different rotation types
+
     rotation_matrices = {
-        0: np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]]), 
-        1: np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]]), 
-        2: np.array([[1, 0, 0], [0, 0, 1], [0, -1, 0]]), 
-        3: np.array([[0, 0, 1], [0, 1, 0], [-1, 0, 0]]),  
-        4: np.array([[-1, 0, 0], [0, 1, 0], [0, 0, -1]]), 
-        5: np.array([[0, 0, -1], [0, 1, 0], [1, 0, 0]]),  
+        0: np.array([[0, 1, 0], [0, 0, 1], [1, 0, 0]]),   
+        1: np.array([[-1, 0, 0], [0, -1, 0], [0, 0, 1]]),  
+        2: np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]]),   
+        3: np.array([[0, 1, 0], [0, 0, 1], [-1, 0, 0]]),   
+        4: np.array([[-1, 0, 0], [0, 1, 0], [0, 0, -1]]),  
+        5: np.array([[0, -1, 0], [1, 0, 0], [0, 0, -1]]),  
     }
     
-    # Apply the selected rotation matrix to the centered voxel coordinates
+    
     rotation_matrix = rotation_matrices[rotation_type]
     adjusted_voxels = np.dot(centered_voxels, rotation_matrix.T)
     
-    # Shift voxels back to the original position relative to the patch
+    
     adjusted_voxels += center
     adjusted_voxels = np.round(adjusted_voxels).astype(int)
-    # Clip to ensure voxels are within bounds
+   
     adjusted_voxels = np.clip(adjusted_voxels, 0, np.array(rotated_patch.shape) - 1)
     
     return rotated_patch, adjusted_voxels
