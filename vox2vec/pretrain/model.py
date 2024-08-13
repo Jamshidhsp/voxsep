@@ -159,6 +159,7 @@ class Vox2Vec(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         patches_1, patches_1_positive, anchor_voxel_1, positive_voxels, negative_voxels = batch['pretrain']
+        # patches_1_positive = patches_1
         # current_time = str(time.time())
         
         assert self.backbone.training
@@ -193,31 +194,33 @@ class Vox2Vec(pl.LightningModule):
         self.queue.update(embeds_1_key)
 
         anchor_voxel_1 = torch.stack([voxels.view(1, 3) for voxels in anchor_voxel_1])
+        # positive_voxels = torch.stack([voxels.view(1, 3) for voxels in positive_voxels])
 
         with torch.no_grad():
             embeds_anchor = self.proj_head(self._vox_to_vec(patches_1, anchor_voxel_1))
 
-        embeds_positive = [self.proj_head(self._vox_to_vec(patches_1_positive, [voxels]))[None, :, :] for voxels in positive_voxels]
+        # embeds_positive = [self.proj_head(self._vox_to_vec(patches_1_positive, [voxels])) for voxels in positive_voxels]
+        embeds_positive = self.proj_head(self._vox_to_vec(patches_1_positive, positive_voxels))
 
-        embeds_positive = torch.cat(embeds_positive, dim=0)  # (bs, num_positive, proj_dim)
+        # embeds_positive = torch.cat(embeds_positive, dim=0)  # (bs, num_positive, proj_dim)
 
         self.queue.shuffle()
         embeds_negative = self.queue.get().to(embeds_positive.device)
 
 
 
-
         
         
         embeds_anchor = F.normalize(embeds_anchor, p=2, dim=1)
-        embeds_positive = F.normalize(embeds_positive, p=2, dim=2)
+        # embeds_positive = F.normalize(embeds_positive, p=2, dim=2)
+        embeds_positive = F.normalize(embeds_positive, p=2, dim=1)
         embeds_negative = F.normalize(embeds_negative, p=2, dim=1)
 
         # Compute similarities with embeds_positive
         running_loss = 0
         # This results in a tensor of shape (bs, 20)
-        pos_similarities = torch.bmm(embeds_positive, embeds_anchor.unsqueeze(2)).squeeze(2) / self.temperature
-
+        # pos_similarities = torch.bmm(embeds_positive, embeds_anchor.unsqueeze(2)).squeeze(2) / self.temperature
+        pos_similarities = torch.mm(embeds_anchor, embeds_positive.T)/self.temperature
 
         neg_similarities = torch.mm(embeds_anchor, embeds_negative.T) / self.temperature
 
@@ -239,7 +242,7 @@ class Vox2Vec(pl.LightningModule):
         running_loss=loss
     
         global_step = str(self.epoch) + "_" + str(batch_idx)
-        metadata= ['anchor']*4 + ['positive']*40 + ['negative']*embeds_negative.size(0)
+        metadata= ['anchor']*4 + ['positive']*4 + ['negative']*embeds_negative.size(0)
         all_embeddings = torch.cat((embeds_anchor, embeds_positive.view(-1, embeds_positive.size(-1)), embeds_negative), dim=0)
 
     # tb.add_embedding(embeds_anchor, metadata=None, label_img=None, global_step=batch_idx, tag='Anchor_Embeddings')
