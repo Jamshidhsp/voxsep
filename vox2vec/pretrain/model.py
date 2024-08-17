@@ -261,9 +261,16 @@ class Vox2Vec(pl.LightningModule):
 
         # Concatenate positive and negative similarities along the second dimension
         logits = torch.cat([pos_sim, neg_sim], dim=1)  # (bs, num_positive + num_negative)
+        log_probs = F.log_softmax(logits, dim=1)
+        pos_loss = log_probs[:, :pos_sim.size(1)].mean(dim=1)
+        loss = -pos_loss.mean()
 
         # Cross entropy loss to classify the positives (first `num_positive` logits should be higher)
-        running_loss = F.cross_entropy(logits, labels)
+        # running_loss = F.cross_entropy(logits, labels)
+        running_loss = loss
+
+
+        print(f'{pos_sim}------------{neg_sim}----------')
 
 
 
@@ -303,8 +310,8 @@ class Vox2Vec(pl.LightningModule):
         # # loss = F.mse_loss(log_probs, labels)
         # # loss = F.binary_cross_entropy(log_probs, labels)    
         
-        # global_step = str(self.epoch) + "_" + str(batch_idx)
-        # metadata= ['anchor']*bs + ['positive']*bs + ['negative']*embeds_negative.size(0)
+        global_step = str(self.epoch) + "_" + str(batch_idx)
+        # metadata= ['anchor']*bs + ['positive']*embeds_positive.size[1] + ['negative']*embeds_negative.size(0)
         # all_embeddings = torch.cat((embeds_anchor, embeds_positive.view(-1, embeds_positive.size(-1)), embeds_negative), dim=0)
 
 
