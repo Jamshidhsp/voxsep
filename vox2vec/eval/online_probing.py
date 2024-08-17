@@ -48,6 +48,6 @@ class OnlineProbing(pl.Callback):
         for i, head in enumerate(self.heads):
             pred_probas = predict(image, self.patch_size, pl_module.backbone, head, pl_module.device, roi)
             dice_scores = compute_dice_score(pred_probas, gt_mask, reduce=lambda x: x)
-            for j, dice_score in enumerate(dice_scores):
-                pl_module.log(f'val/head_{i}_dice_score_for_cls_{j}', dice_score, on_epoch=True)
+            # for j, dice_score in enumerate(dice_scores):
+            #     pl_module.log(f'val/head_{i}_dice_score_for_cls_{j}', dice_score, on_epoch=True)
             pl_module.log(f'val/head_{i}_avg_dice_score', dice_scores.mean(), on_epoch=True)

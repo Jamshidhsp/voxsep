@@ -26,6 +26,7 @@ num_positives = 5
 num_negative = 5
 batch = 5
 proj_dim = 128
+# proj_dim = 32
 max_sampling = 1
 
 img_save_dir = '/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/img_save/'
@@ -39,14 +40,37 @@ import math
 class VoxelPositionalEncoding(nn.Module):
     def __init__(self, dim):
         super(VoxelPositionalEncoding, self).__init__()
-        self.linear = nn.Linear(3, dim)
+        self.linear1 = nn.Linear(3, proj_dim)
         self.dim = dim
-    def forward(self, anchor_voxels, target_voxles):
-        voxels = anchor_voxels - target_voxles
+    def forward(self, anchor_voxels, target_voxels):
+        anchor_voxels = anchor_voxels.expand(-1, target_voxels.size(1), -1)
+        voxels = anchor_voxels - target_voxels
         voxels = voxels/128
-        pe = self.linear(voxels)
+        pe = (self.linear1(voxels))
         return pe
 
+       
+class Projector(nn.Module):
+    def __init__(self, proj_dim, embed_dim):
+        super(Projector, self).__init__()
+        self.pe = VoxelPositionalEncoding(proj_dim)
+        self.proj_head = nn.Sequential(
+            nn.Linear(embed_dim, embed_dim),
+            nn.BatchNorm1d(embed_dim),
+            nn.ReLU(),
+            nn.Linear(embed_dim, embed_dim),
+            nn.BatchNorm1d(embed_dim),
+            nn.ReLU(),
+            nn.Linear(embed_dim, proj_dim),
+        )
+    
+    def forward(self, x, anchor, target):
+        x = self.proj_head(x) 
+        position = self.pe(anchor, target).view(-1, x.size(-1))
+        # x_encoded = x.unsqueeze(1) + position  
+        x_encoded = x + position
+        # return x_encoded.squeeze(1)
+        return x_encoded
 
 
 
@@ -105,56 +129,63 @@ class Vox2Vec(pl.LightningModule):
             temp: float = 0.1,
             # temp: torch.nn.Parameter(torch.tensor(0.1)),
             # lr: float = 3e-4,
-            lr: float = 5e-5,
+            lr: float = 1e-2,
+            # lr: float = 5e-5,
     ):
 
         super().__init__()
 
+
+        
+
+
         self.save_hyperparameters(ignore='backbone')
         self.epoch = 0
-
         self.backbone = backbone
         embed_dim = sum_pyramid_channels(base_channels, num_scales)
+        # embed_dim = 48
         self.pe_size = embed_dim
-        self.proj_head = nn.Sequential(
-            nn.Linear(embed_dim, embed_dim),
-            nn.BatchNorm1d(embed_dim),
-            nn.ReLU(),
-            nn.Linear(embed_dim, embed_dim),
-            nn.BatchNorm1d(embed_dim),
-            nn.ReLU(),
-            nn.Linear(embed_dim, proj_dim),
-            # nn.Sigmoid(),
-            # Lambda(F.normalize)
-        )
+        # self.proj_head = nn.Sequential(
+        #     nn.Linear(embed_dim, embed_dim),
+        #     nn.BatchNorm1d(embed_dim),
+        #     nn.ReLU(),
+        #     nn.Linear(embed_dim, embed_dim),
+        #     nn.BatchNorm1d(embed_dim),
+        #     nn.ReLU(),
+        #     nn.Linear(embed_dim, proj_dim),
+        #     # nn.Sigmoid(),
+        #     # Lambda(F.normalize)
+        # )
 
         self.backbone_key = deepcopy(self.backbone)
         for param_k in self.backbone_key.parameters():
             param_k.requires_grad = False  
         
         
-        self.proj_head_key = nn.Sequential(
-            nn.Linear(embed_dim, embed_dim),
-            nn.BatchNorm1d(embed_dim),
-            nn.ReLU(),
-            nn.Linear(embed_dim, embed_dim),
-            nn.BatchNorm1d(embed_dim),
-            nn.ReLU(),
-            nn.Linear(embed_dim, proj_dim),
-            # nn.Sigmoid(),
-            # Lambda(F.normalize)
-        )
+        # self.proj_head_key = nn.Sequential(
+        #     nn.Linear(embed_dim, embed_dim),
+        #     nn.BatchNorm1d(embed_dim),
+        #     nn.ReLU(),
+        #     nn.Linear(embed_dim, embed_dim),
+        #     nn.BatchNorm1d(embed_dim),
+        #     nn.ReLU(),
+        #     nn.Linear(embed_dim, proj_dim),
+        #     # nn.Sigmoid(),
+        #     # Lambda(F.normalize)
+        # )
         
-        for param_q, param_k in zip(self.proj_head.parameters(), self.proj_head_key.parameters()):
-            param_k.requires_grad = False  
+
+        self.projector = Projector(proj_dim, embed_dim)
+        # for param_q, param_k in zip(self.proj_head.parameters(), self.proj_head_key.parameters()):
+        #     param_k.requires_grad = False  
         
 
 
 
         self.pe = VoxelPositionalEncoding(dim=self.pe_size)
 
-        self.temperature = torch.nn.Parameter(torch.tensor(0.9))
-        # self.temperature = 1.0
+        self.temperature = torch.nn.Parameter(torch.tensor(0.07))
+        # self.temperature = 0.9
         # self.temp = 1.0
         self.lr = lr
         self.queue = Queue(max_size=20, embedding_size=proj_dim)
@@ -165,7 +196,7 @@ class Vox2Vec(pl.LightningModule):
     
     def _vox_to_vec_key(self, patches: torch.Tensor, voxels: Iterable[torch.Tensor]) -> torch.Tensor:
         feature_pyramid = self.backbone_key(patches)[:]
-        return torch.cat([select_from_pyramid([x[j] for x in feature_pyramid], v) for j, v in enumerate(voxels)])
+        return torch.cat([select_from_pyramid([x[j] for x in feature_pyramid], v) for j, v in enumerate([voxels])])
 
     @torch.no_grad()
     def momentum_update(self):
@@ -173,114 +204,122 @@ class Vox2Vec(pl.LightningModule):
         with torch.no_grad():
             for param_q, param_k in zip(self.backbone.parameters(), self.backbone_key.parameters()):
                 param_k.data = param_k.data * momentum + param_q.data * (1. - momentum)
-            for param_q, param_k in zip(self.proj_head.parameters(), self.proj_head_key.parameters()):
-                param_k.data = param_k.data * momentum + param_q.data * (1. - momentum)
+            # for param_q, param_k in zip(self.proj_head.parameters(), self.proj_head_key.parameters()):
+            #     param_k.data = param_k.data * momentum + param_q.data * (1. - momentum)
         
 
 
     def training_step(self, batch, batch_idx):
         patches_1, patches_1_positive, anchor_voxel_1, positive_voxels, negative_voxels = batch['pretrain']
-        # patches_1_positive = patches_1
-        # current_time = str(time.time())
-        
+        # voxels (bs, num_pos, dim)
         assert self.backbone.training
-        assert self.proj_head.training
-        
         self.backbone_key.training = False
-        self.proj_head_key.training = False
-
         assert not self.backbone_key.training
-        assert not self.proj_head_key.training
         
         self.momentum_update()
+        bs = positive_voxels.size(0)
 
-        # with torch.no_grad():
-        #     embeds_1_key = self.proj_head_key(self._vox_to_vec_key(patches_1, negative_voxels))
+        # embeds_1_key = self.proj_head_key((self._vox_to_vec_key(patches_1, negative_voxels)) + (self.pe(anchor_voxel_1.float(), negative_voxels.float())).view(-1, self.pe_size))
         # self.queue.update(embeds_1_key)
 
+        running_loss = 0
         
-        # anchor_voxel_1 = [voxels.view(1, 3) for voxels in anchor_voxel_1]
-        # with torch.no_grad():
-        #     embeds_anchor = self.proj_head(self._vox_to_vec(patches_1, anchor_voxel_1))
-        # bs = embeds_anchor.size(0)
-        # embeds_positive = [self.proj_head(self._vox_to_vec(patches_1_positive, [voxels])) for voxels in positive_voxels]
-        # embeds_positive = [embed[None, :, : ] for embed in embeds_positive]
-        # embeds_positive = torch.cat(embeds_positive, dim=0) #(bs, num_positive, proj_dim)
-        
-        # self.queue.shuffle() 
-        # embeds_negative = self.queue.get().to(embeds_positive.device)
-        
-        with torch.no_grad():
-            # embeds_1_key = self.proj_head_key(self._vox_to_vec_key(patches_1, negative_voxels))
-            embeds_1_key = self.proj_head_key((self._vox_to_vec_key(patches_1, negative_voxels)) + (self.pe(anchor_voxel_1.float(), negative_voxels.float())).view(-1, self.pe_size))
-        self.queue.update(embeds_1_key)
+        # anchor_voxel_1, positive_voxels, negative_voxels = anchor_voxel_1.view(-1, 3), positive_voxels.view(-1, 3), negative_voxels.view(-1, 3)
 
-        # anchor_voxel_1 = torch.stack([voxels.view(1, 3) for voxels in anchor_voxel_1])
-        # positive_voxels = torch.stack([voxels.view(1, 3) for voxels in positive_voxels])
-
-        with torch.no_grad():
-            embeds_anchor = self.proj_head(self._vox_to_vec(patches_1, anchor_voxel_1))
-        # print('embeds_anchor.shape', embeds_anchor.shape)
-
-        # embeds_positive = [self.proj_head(self._vox_to_vec(patches_1_positive, [voxels])) for voxels in positive_voxels]
-        # embeds_positive = self.proj_head(self._vox_to_vec(patches_1_positive, positive_voxels))
-        embeds_positive = self.proj_head((self._vox_to_vec(patches_1_positive, positive_voxels))+(self.pe(anchor_voxel_1.float(), positive_voxels.float())).view(-1, self.pe_size))
-
-        # embeds_positive = torch.cat(embeds_positive, dim=0)  # (bs, num_positive, proj_dim)
-
-        self.queue.shuffle()
-        embeds_negative = self.queue.get().to(embeds_positive.device)
-
-
-
-        
+        embeds_anchor = self.projector(self._vox_to_vec(patches_1, anchor_voxel_1), anchor_voxel_1, anchor_voxel_1)
+        embeds_positive = self.projector(self._vox_to_vec(patches_1_positive, positive_voxels), anchor_voxel_1, positive_voxels)
+        embeds_negative = self.projector(self._vox_to_vec(patches_1, negative_voxels), anchor_voxel_1, negative_voxels)
         
         embeds_anchor = F.normalize(embeds_anchor, p=2, dim=1)
-        # embeds_positive = F.normalize(embeds_positive, p=2, dim=2)
         embeds_positive = F.normalize(embeds_positive, p=2, dim=1)
         embeds_negative = F.normalize(embeds_negative, p=2, dim=1)
 
-        # Compute similarities with embeds_positive
-        running_loss = 0
-        # This results in a tensor of shape (bs, 20)
-        # pos_similarities = torch.bmm(embeds_positive, embeds_anchor.unsqueeze(2)).squeeze(2) / self.temperature
-        pos_similarities = torch.mm(embeds_anchor, embeds_positive.T)/self.temperature
-
-        neg_similarities = torch.mm(embeds_anchor, embeds_1_key.T) / self.temperature
-
-        logits = torch.cat([pos_similarities, neg_similarities], dim=1)  # Shape (bs, 20 + 65000)
-        # labels = torch.zeros(logits.size(0), dtype=torch.long).to(embeds_anchor.device)
-        labels_positive = torch.ones(pos_similarities.size()).to(pos_similarities.device)
-        labels_negative = torch.zeros(neg_similarities.size()).to(pos_similarities.device) 
-        # labels = torch.cat([labels_positive, labels_negative], dim=1)  # Shape (bs, 20 + 65000)
-        labels = torch.zeros(logits.size(0), dtype=torch.long).to(embeds_anchor.device) 
-        log_probs = F.log_softmax(logits, dim=1)
-        # log_probs = F.sigmoid(logits)
+        # print(embeds_anchor.shape, embeds_positive.shape, embeds_negative.shape) #(bs, 128), (bs*num_positive, 128), (bs*num_negative, 128)
         
-        # print(log_probs.shape, labels.shape)
+        embeds_anchor = embeds_anchor.view(bs, -1, 128)
+        embeds_positive = embeds_positive.view(bs, -1, 128)
+        embeds_negative = embeds_negative.view(bs, -1, 128)
 
-        loss_pos = torch.sum(pos_similarities, dim=1)
-        loss_neg = torch.sum(neg_similarities, dim=1)
-        running_loss = F.relu(1 + loss_pos - loss_neg).mean()
+        '''        
+        pos_sim = torch.matmul(embeds_anchor, embeds_positive.transpose(-1, -2)) / self.temperature  # (batch_size, 1, num_pos)
+        neg_sim = torch.matmul(embeds_anchor, embeds_negative.transpose(-1, -2)) / self.temperature  # (batch_size, 1, num_neg)
+        pos_exp = torch.exp(pos_sim)
+        neg_exp = torch.exp(neg_sim).sum(dim=-1, keepdim=True)
+        running_loss = -torch.log(pos_exp / (pos_exp + neg_exp)).mean()
+        
+        '''
+
+        pos_sim = torch.bmm(embeds_positive, embeds_anchor.squeeze(1).unsqueeze(-1)).squeeze(-1)  # (bs, num_positive)
+        neg_sim = torch.bmm(embeds_negative, embeds_anchor.squeeze(1).unsqueeze(-1)).squeeze(-1)  # (bs, num_negative)
+
+       
+        pos_sim = pos_sim / self.temperature  # (bs, num_positive)
+        neg_sim = neg_sim / self.temperature  # (bs, num_negative)
+
+        # Create labels, the positives should be classified higher than any negative (logits)
+        labels = torch.zeros(embeds_anchor.size(0), dtype=torch.long, device=embeds_anchor.device)  # (bs)
+
+        # Concatenate positive and negative similarities along the second dimension
+        logits = torch.cat([pos_sim, neg_sim], dim=1)  # (bs, num_positive + num_negative)
+
+        # Cross entropy loss to classify the positives (first `num_positive` logits should be higher)
+        running_loss = F.cross_entropy(logits, labels)
+
+
+
+
+
+
+
+
+
+
+        # pos_distance = F.pairwise_distance(embeds_anchor, embeds_positive, keepdim=True) 
+        # neg_distance = F.pairwise_distance(embeds_anchor, embeds_negative, keepdim=True)
+        # positive_loss = pos_distance.mean()
+        # negative_loss = F.relu(3 - neg_distance.mean())
+        
+        # running_loss = positive_loss + negative_loss
+        
+        # print(f'{self.temperature}, --expl---{positive_loss.item()}, -----------, {negative_loss.item()}, ----- {self.backbone.first_conv.weight[0, 0, 0]}')
+
+
+        # # pos_similarities = torch.bmm(embeds_positive, embeds_anchor.unsqueeze(2)).squeeze(2) / self.temperature
+        # pos_similarities = torch.mm(embeds_anchor, embeds_positive.T)/self.temperature
+
+        # neg_similarities = torch.mm(embeds_anchor, embeds_negative.T) / self.temperature
+
+        # logits = torch.cat([pos_similarities, neg_similarities], dim=1)  # Shape (bs, 20 + 65000)
+        # # labels = torch.zeros(logits.size(0), dtype=torch.long).to(embeds_anchor.device)
+        # labels_positive = torch.ones(pos_similarities.size()).to(pos_similarities.device)
+        # labels_negative = torch.zeros(neg_similarities.size()).to(pos_similarities.device) 
+        # # labels = torch.cat([labels_positive, labels_negative], dim=1)  # Shape (bs, 20 + 65000)
+        # labels = torch.arange(logits.size(0), dtype=torch.long).to(embeds_anchor.device) 
+        # # log_probs = F.log_softmax(logits, dim=1)
+        # # log_probs = F.sigmoid(logits)
+
+        # running_loss = F.cross_entropy(logits, labels)
+        # # running_loss = F.nll_loss(log_probs, labels)
+        # # loss = F.mse_loss(log_probs, labels)
+        # # loss = F.binary_cross_entropy(log_probs, labels)    
+        
+        # global_step = str(self.epoch) + "_" + str(batch_idx)
+        # metadata= ['anchor']*bs + ['positive']*bs + ['negative']*embeds_negative.size(0)
+        # all_embeddings = torch.cat((embeds_anchor, embeds_positive.view(-1, embeds_positive.size(-1)), embeds_negative), dim=0)
+
+
+        # loss_pos = F.mse_loss(embeds_anchor, embeds_positive)
+        # loss_neg = F.mase_loss(embeds_anchor, embeds_negative)
+        
+        # running_loss = F.relu(loss_neg- loss_pos + 100)
+        
+        
 
 
         
-        # running_loss = F.nll_loss(log_probs, labels)
-        # loss = F.mse_loss(log_probs, labels)
-        # loss = F.binary_cross_entropy(log_probs, labels)    
-        # running_loss=loss
-        bs = labels.size(0)
-        global_step = str(self.epoch) + "_" + str(batch_idx)
-        metadata= ['anchor']*bs + ['positive']*bs + ['negative']*embeds_negative.size(0)
-        all_embeddings = torch.cat((embeds_anchor, embeds_positive.view(-1, embeds_positive.size(-1)), embeds_negative), dim=0)
+    
+            
 
-    # tb.add_embedding(embeds_anchor, metadata=None, label_img=None, global_step=batch_idx, tag='Anchor_Embeddings')
-
-
-    # tb.add_embedding(embeds_positive.view(-1, embeds_positive.size(-1)), metadata=None, label_img=None, global_step=batch_idx, tag='Positive_Embeddings')
-
-
-    # tb.add_embedding(embeds_negative, metadata=None, label_img=None, global_step=batch_idx, tag='Negative_Embeddings')
         # if batch_idx+1 ==100:
         #     tb.add_embedding(all_embeddings, metadata=metadata, label_img=None, global_step=global_step, tag='all_embedding')
         #     self.epoch+=1

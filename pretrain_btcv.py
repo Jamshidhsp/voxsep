@@ -45,7 +45,7 @@ def parse_args():
     parser.add_argument('--spacing', nargs='+', type=float, default=SPACING)
     parser.add_argument('--patch_size', nargs='+', type=int, default=PATCH_SIZE)
     parser.add_argument('--pretrain_batch_size', type=int, default=8)
-    parser.add_argument('--pretrain_num_workers', type=int, default=8)
+    parser.add_argument('--pretrain_num_workers', type=int, default=4)
     parser.add_argument('--probing_batch_size', type=int, default=2)
     parser.add_argument('--probing_num_workers', type=int, default=2)
     parser.add_argument('--num_batches_per_epoch', type=int, default=100)
@@ -110,7 +110,7 @@ def main(args):
         raise NotImplementedError(f'Dataset {args.dataset} is not supported yet.')
 
     heads = [
-        FPNLinearHead(args.base_channels, args.num_scales, num_classes),
+        # FPNLinearHead(args.base_channels, args.num_scales, num_classes),
         FPNNonLinearHead(args.base_channels, args.num_scales, num_classes)
     ]
     probing_callback = OnlineProbing(*heads, patch_size=patch_size)
