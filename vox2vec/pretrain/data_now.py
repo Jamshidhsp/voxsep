@@ -138,19 +138,64 @@ class PretrainDataset(Dataset):
                 self.max_num_voxels_per_patch]
         views = [sample_views(*args) for _ in range(self.batch_size)]
 
-        # patches_1, patches_1_positive, anchor_voxel_1, positive_voxels, negative_voxels, shifts = zip(*views)
-        patches_1, patches_1_positive, anchor_voxel_1, positive_voxels, _, _ = zip(*views)
+        
+        # patches_1, patches_1_positive, patches_2, voxels_1, voxels_2 = zip(*views)
+        # patches_1, patches_1_positive, voxels_1, voxels_2 = zip(*views)
+        patches_1, patches_1_positive, anchor_voxel_1, positive_voxels, negative_voxels, shifts = zip(*views)
         
         
         patches_1 = torch.tensor(np.stack([p[None] for p in patches_1]))
         patches_1_positive = torch.tensor(np.stack([p[None] for p in patches_1_positive]))
+        
+        # patches_1_positive = MyAugmentation(patches_1_positive)
+        
+        # patches_2 = torch.tensor(np.stack([p[None] for p in patches_2]))
+        # voxels_1 = [torch.tensor(voxels) for voxels in voxels_1]
+        # voxels_2 = [torch.tensor(voxels) for voxels in voxels_2]
+
+
+
+        # positive_voxels = [torch.tensor(voxels) for voxels in positive_voxels]
+        # negative_voxels = [torch.tensor(voxels) for voxels in negative_voxels]
+        # anchor_voxel_1 =  [torch.tensor(voxels) for voxels in anchor_voxel_1]
 
         positive_voxels = torch.stack([torch.tensor(voxels) for voxels in positive_voxels])
-        # negative_voxels = torch.stack([torch.tensor(voxels) for voxels in negative_voxels])
+        negative_voxels = torch.stack([torch.tensor(voxels) for voxels in negative_voxels])
         anchor_voxel_1 = torch.stack([torch.tensor(voxels) for voxels in anchor_voxel_1])
         
-        # return patches_1, patches_1_positive, anchor_voxel_1, positive_voxels, negative_voxels #, shifts
-        return patches_1, patches_1_positive, anchor_voxel_1, positive_voxels, _ #, shifts
+        # shifts = torch.stack([torch.tensor(voxels) for voxels in shifts])
+        # temp_patch = patches_1[0][0].numpy()
+
+        # print('------------------', temp_patch.shape)
+        # time_ = str(time.time())
+        # save_nii(temp_patch, (time_+'original'))
+        # temp_patch = np.zeros(temp_patch.shape)
+        # x, y, z = anchor_voxel_1.T
+        # temp_patch[x, y, z] = 1
+        # save_nii(temp_patch, (time_+'anchor'))
+        # x, y, z = positive_voxels.T
+        # temp_patch[x, y, z] = 2
+        # save_nii(temp_patch, (time_+'positive'))
+        # x, y, z = negative_voxels.T
+        # temp_patch[x, y, z] = 3
+
+        # save_nii(temp_patch, (time_+'negative'))
+
+
+        
+        # disp_0 = torch.cat((patches_1[0, 0, :, :, 16], patches_1_positive[0, 0, :, :, 16]), axis=1)
+        # disp_0 = disp_0.detach().cpu().numpy()
+        # img_name = str(time.time())
+        # plt.imshow(disp_0)
+        
+        # plt.savefig(img_save_dir+img_name+'.png')
+        
+        
+        
+        # return patches_1, patches_1_positive, voxels_1, voxels_2
+        # print(len(positive_voxels))
+        # assert (positive_voxels.size(1))==20
+        return patches_1, patches_1_positive, anchor_voxel_1, positive_voxels, negative_voxels #, shifts
 
 
 def sample_views(
@@ -163,13 +208,15 @@ def sample_views(
         max_num_voxels: int,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     anchor_voxel = random.choice(roi_voxels)
+    start_time = time.time()
+    backup = anchor_voxel
     patch_1, roi_voxels_1_dict, patch_1_positive = sample_view(image, roi_voxels, anchor_voxel, patch_size,
                                          window_hu, min_window_hu, max_window_hu)
     
     roi_voxels_1 = roi_voxels_1_dict.get('voxels_shifted')
     
     
-    patch_1_positive = MyAugmentation(patch_1_positive)
+    # patch_1_positive = MyAugmentation(patch_1_positive)
     
     # patch_1_positive, adjusted_voxels = random_rotation(patch_1_positive, roi_voxels_1)
     
@@ -184,7 +231,7 @@ def sample_views(
 
     assert valid.any()
     indices = np.where(valid)[0]
-    # assert indices.shape[0] ==524288
+    assert indices.shape[0] ==524288
 
     all_coords = roi_voxels_1[indices]
 
@@ -196,40 +243,36 @@ def sample_views(
     # adjusted_voxels = roi_voxels_1
     # patch_1_positive, adjusted_voxels = random_rotation(patch_1_positive, roi_voxels_1)
     num_negative = max_num_voxels
-    num_neighbors = 1024
+    num_neighbors = 2
     anchor_id = random.choice(np.arange(len(indices)-num_negative-1))
     # positive_voxels = roi_voxels_1[indices[anchor_id:anchor_id+num_neighbors]]
     anchor_voxels =  roi_voxels_1[indices[anchor_id:anchor_id+1]]
     distances = np.linalg.norm(all_coords[:, :2] - anchor_voxels[:, :2], axis=1)
-    # distances = np.linalg.norm(all_coords - anchor_voxels, axis=1)
     pos_radius = 10
-    neg_radius = 20
-    # positive_voxels = all_coords[distances <= pos_radius]
-    # negative_voxels = all_coords[distances>=neg_radius]
+    neg_radius = 50
+    positive_voxels = all_coords[distances <= pos_radius]
+    negative_voxels = all_coords[distances>=neg_radius]
     
 
-    if indices.shape[0] > num_neighbors:
-        anchor_voxels = all_coords[np.random.choice(indices.shape[0], num_neighbors, replace=False)]
-        # negative_voxels = all_coords[np.random.choice(indices.shape[0], num_negative, replace=False)]
-        # positive_voxels = anchor_voxels
-        patch_1_positive, positive_voxels = random_rotation(patch_1_positive, anchor_voxels)
-
-        # positive_voxels = positive_voxels[np.random.choice(positive_voxels.shape[0], num_neighbors, replace=False)]
-        # negative_voxels = negative_voxels[np.random.choice(negative_voxels.shape[0], num_negative, replace=False)]    
-        
-        # negative_voxels = roi_voxels_1[np.random.choice(indices[(len(indices))//2:], num_negative, replace=False)]    
-
-        # positive_voxels, adjusted_voxels = random_rotation(patch_1_positive, positive_voxels)
-
-        shift = roi_voxels_1_dict.get('shift')
-        
     
+    positive_voxels = all_coords[np.random.choice(indices.shape[0], num_neighbors, replace=False)]
+    negative_voxels = all_coords[np.random.choice(indices.shape[0], num_negative, replace=False)]
 
-        
-        # return patch_1, patch_1_positive, roi_voxels_1_1[indices], roi_voxels_1_2[indices]
-        
-        # return patch_1, patch_1_positive, anchor_voxels, positive_voxels, negative_voxels, shift
-        return patch_1, patch_1_positive, anchor_voxels, positive_voxels, 0, 0
+    '''
+    positive_voxels = positive_voxels[np.random.choice(positive_voxels.shape[0], num_neighbors, replace=False)]
+    negative_voxels = negative_voxels[np.random.choice(negative_voxels.shape[0], num_negative, replace=False)]    
+    '''
+    # negative_voxels = roi_voxels_1[np.random.choice(indices[(len(indices))//2:], num_negative, replace=False)]    
+
+    # positive_voxels, adjusted_voxels = random_rotation(patch_1_positive, positive_voxels)
+
+    shift = roi_voxels_1_dict.get('shift')
+    
+   
+
+    
+    # return patch_1, patch_1_positive, roi_voxels_1_1[indices], roi_voxels_1_2[indices]
+    return patch_1, patch_1_positive, anchor_voxels, positive_voxels, negative_voxels, shift
 
 
 def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_hu, max_window_hu):
@@ -240,9 +283,6 @@ def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_h
     box = sample_box(image.shape, patch_size, anchor_voxel)
     image = crop_to_box(image, box, axis=(-3, -2, -1))
     image_positive = copy.copy(image)
-
-    # image_positive = np.apply_along_axis(np.random.permutation, axis=2, arr=image_positive)
-    
     shift = box[0]
     voxels_dict = {}
     voxels = voxels - shift
@@ -318,59 +358,87 @@ def MyAugmentation(image):
 
 
 
+
+# def rotate_patch(patch, rotation_type):
+#     if rotation_type == 0:  
+#         return scipy.ndimage.rotate(patch, 90, axes=(1, 2), reshape=False, mode='nearest')
+#     elif rotation_type == 1:  
+#         return scipy.ndimage.rotate(patch, 180, axes=(1, 2), reshape=False, mode='nearest')
+#     elif rotation_type == 2:  
+#         return scipy.ndimage.rotate(patch, 270, axes=(1, 2), reshape=False, mode='nearest')
+#     elif rotation_type == 3:  
+#         return scipy.ndimage.rotate(patch, 90, axes=(0, 2), reshape=False, mode='nearest')
+#     elif rotation_type == 4:  
+#         return scipy.ndimage.rotate(patch, 180, axes=(0, 2), reshape=False, mode='nearest')
+#     elif rotation_type == 5:  
+#         return scipy.ndimage.rotate(patch, 270, axes=(0, 2), reshape=False, mode='nearest')
+
+# def random_rotation(patch, voxels):
+    
+#     center = np.array(patch.shape) / 2
+#     centered_voxels = voxels - center
+#     rotation_type = np.random.randint(0, 6)
+#     rotated_patch = rotate_patch(patch, rotation_type)
+#     rotation_matrices = {
+#         0: np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]]), 
+#         1: np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]]), 
+#         2: np.array([[1, 0, 0], [0, 0, 1], [0, -1, 0]]), 
+#         3: np.array([[0, 0, 1], [0, 1, 0], [-1, 0, 0]]),  
+#         4: np.array([[-1, 0, 0], [0, 1, 0], [0, 0, -1]]), 
+#         5: np.array([[0, 0, -1], [0, 1, 0], [1, 0, 0]]),  
+#     }
+#     rotation_matrix = rotation_matrices[rotation_type]
+#     adjusted_voxels = np.dot(centered_voxels, rotation_matrix.T)
+#     adjusted_voxels += center
+#     adjusted_voxels = np.round(adjusted_voxels).astype(int)
+#     adjusted_voxels = np.clip(adjusted_voxels, 0, np.array(rotated_patch.shape) - 1)
+    
+#     return rotated_patch, adjusted_voxels
+
+
+
 import numpy as np
-import scipy.ndimage
 import torch
 
-def rotate_patch(patch, rotation_type):
-    
-    rotation_matrices = {
-        0: np.array([[0, 1, 0], [0, 0, 1], [1, 0, 0]]),   
-        1: np.array([[-1, 0, 0], [0, -1, 0], [0, 0, 1]]),  
-        2: np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]]),   
-        3: np.array([[0, 1, 0], [0, 0, 1], [-1, 0, 0]]),   
-        4: np.array([[-1, 0, 0], [0, 1, 0], [0, 0, -1]]),  
-        5: np.array([[0, -1, 0], [1, 0, 0], [0, 0, -1]]),  
-    }
+# Precompute the rotation matrices
+rotation_matrices = {
+    0: torch.tensor([[1, 0, 0], [0, 0, -1], [0, 1, 0]]), 
+    1: torch.tensor([[1, 0, 0], [0, -1, 0], [0, 0, -1]]), 
+    2: torch.tensor([[1, 0, 0], [0, 0, 1], [0, -1, 0]]), 
+    3: torch.tensor([[0, 0, 1], [0, 1, 0], [-1, 0, 0]]),  
+    4: torch.tensor([[-1, 0, 0], [0, 1, 0], [0, 0, -1]]), 
+    5: torch.tensor([[0, 0, -1], [0, 1, 0], [1, 0, 0]]),  
+}
 
-    rotation_matrix = rotation_matrices[rotation_type]
+def rotate_patch(patch, rotation_type):
+    if not isinstance(patch, torch.Tensor):
+        patch = torch.tensor(patch)
     
-    
-    rotated_patch = scipy.ndimage.affine_transform(
-        patch, 
-        rotation_matrix, 
-        offset=0, 
-        order=1, 
-        mode='nearest'
-    )
-    
-    return rotated_patch
+    # Use PyTorch's built-in operations to rotate
+    if rotation_type == 0:  
+        return torch.rot90(patch, k=1, dims=(1, 2))
+    elif rotation_type == 1:  
+        return torch.rot90(patch, k=2, dims=(1, 2))
+    elif rotation_type == 2:  
+        return torch.rot90(patch, k=3, dims=(1, 2))
+    elif rotation_type == 3:  
+        return torch.rot90(patch, k=1, dims=(0, 2))
+    elif rotation_type == 4:  
+        return torch.rot90(patch, k=2, dims=(0, 2))
+    elif rotation_type == 5:  
+        return torch.rot90(patch, k=3, dims=(0, 2))
 
 def random_rotation(patch, voxels):
-    
-    center = np.array(patch.shape) / 2
+    center = torch.tensor(patch.shape) / 2
     centered_voxels = voxels - center
     rotation_type = np.random.randint(0, 6)
+    
     rotated_patch = rotate_patch(patch, rotation_type)
-    
-
-    rotation_matrices = {
-        0: np.array([[0, 1, 0], [0, 0, 1], [1, 0, 0]]),   
-        1: np.array([[-1, 0, 0], [0, -1, 0], [0, 0, 1]]),  
-        2: np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]]),   
-        3: np.array([[0, 1, 0], [0, 0, 1], [-1, 0, 0]]),   
-        4: np.array([[-1, 0, 0], [0, 1, 0], [0, 0, -1]]),  
-        5: np.array([[0, -1, 0], [1, 0, 0], [0, 0, -1]]),  
-    }
-    
-    
     rotation_matrix = rotation_matrices[rotation_type]
-    adjusted_voxels = np.dot(centered_voxels, rotation_matrix.T)
-    
+    adjusted_voxels = torch.matmul(centered_voxels, rotation_matrix.T)
     
     adjusted_voxels += center
-    adjusted_voxels = np.round(adjusted_voxels).astype(int)
-   
-    adjusted_voxels = np.clip(adjusted_voxels, 0, np.array(rotated_patch.shape) - 1)
+    adjusted_voxels = torch.round(adjusted_voxels).int()
+    adjusted_voxels = torch.clamp(adjusted_voxels, 0, torch.tensor(rotated_patch.shape) - 1)
     
     return rotated_patch, adjusted_voxels

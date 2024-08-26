@@ -2,6 +2,9 @@ from typing import *
 
 import torch
 
+import torch
+from torch import nn
+
 
 def select_from_pyramid(
         feature_pyramid: Sequence[torch.Tensor],
@@ -18,7 +21,8 @@ def select_from_pyramid(
     """
     # s = torch.cat([x.moveaxis(0, -1)[(indices // 2 ** i).unbind(1)] for i, x in enumerate(feature_pyramid)], dim=1)
     # s = torch.cat([x.moveaxis(0, -1)[(indices // 2 ** 2).unbind(1)] for i, x in enumerate(feature_pyramid[1].unsqueeze(0))], dim=1)
-    
+    # test = [x.moveaxis(0, -1)[(indices // 2 ** i).unbind(1)] for i, x in enumerate(feature_pyramid)]
+
     s = torch.cat([x.moveaxis(0, -1)[(indices // 2 ** i).unbind(1)] for i, x in enumerate(feature_pyramid)], dim=1)
     # s_list = []
     # for i, x in enumerate(feature_pyramid):

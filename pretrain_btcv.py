@@ -17,6 +17,9 @@ from vox2vec.nn import FPN3d, FPNLinearHead, FPNNonLinearHead
 from vox2vec.pretrain.model import Vox2Vec
 # from vox2vec.pretrain.model_modified import Vox2Vec
 from vox2vec.eval.online_probing import OnlineProbing
+import shutil
+import os
+import time
 
 
 def parse_args():
@@ -27,8 +30,9 @@ def parse_args():
     # parser.add_argument('--cache_dir', default='/home/jamshid/Datasets/cache/', required=False)
     
     parser.add_argument('--log_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/logs_btcv_to_btcv', required=False)
-
-    # parser.add_argument('--amos_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/datasets/BTCV_niigz/amos_template/', required=False)
+    '''
+    parser.add_argument('--amos_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/datasets/BTCV_niigz/amos_template/', required=False)
+    '''
     parser.add_argument('--amos_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/server_datasets/amos', required=False)
     # parser.add_argument('--amos_dir', default='/home/jamshid/Datasets/', required=False)
 
@@ -38,18 +42,20 @@ def parse_args():
     parser.add_argument('--midrc_dir', default="/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/Datasets/midrc/manifest-1608266677008/", required=False)
     parser.add_argument('--nsclc_dir')
     # parser.add_argument('--btcv_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/btcv', required=False)
-    # parser.add_argument('--btcv_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/btcv_new', required=False)
+    '''
+    parser.add_argument('--btcv_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/btcv_new', required=False)
+    '''
     parser.add_argument('--btcv_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/server_datasets/btcv', required=False)
-
+    
 
     parser.add_argument('--spacing', nargs='+', type=float, default=SPACING)
     parser.add_argument('--patch_size', nargs='+', type=int, default=PATCH_SIZE)
     parser.add_argument('--pretrain_batch_size', type=int, default=8)
-    parser.add_argument('--pretrain_num_workers', type=int, default=4)
+    parser.add_argument('--pretrain_num_workers', type=int, default=8)
     parser.add_argument('--probing_batch_size', type=int, default=2)
     parser.add_argument('--probing_num_workers', type=int, default=2)
     parser.add_argument('--num_batches_per_epoch', type=int, default=100)
-    parser.add_argument('--val_every_n_epoch', type=int, default=2)                                 
+    parser.add_argument('--val_every_n_epoch', type=int, default=10)                                 
 
     parser.add_argument('--base_channels', type=int, default=BASE_CHANNELS)
     parser.add_argument('--num_scales', type=int, default=NUM_SCALES)
@@ -58,6 +64,13 @@ def parse_args():
 
 
 def main(args):
+    copy_time = time.time()
+
+    # source = "/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/vox2vec/pretrain"
+    # desination = "/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/runs_shutil/"+str(time.time())
+    # if not os.path.exists(desination):
+    #     os.mkdir(desination)
+    # shutil.copytree(source, desination)
     spacing = tuple(args.spacing)
     patch_size = tuple(args.patch_size)
     pretrain_dataset = PretrainDataset(
@@ -85,6 +98,7 @@ def main(args):
 
     in_channels = 1
     backbone = FPN3d(in_channels, args.base_channels, args.num_scales)
+    # backbone = FPN3dUniform(in_channels, args.base_channels, args.num_scales)
     model = Vox2Vec(
         backbone=backbone,
         base_channels=args.base_channels,

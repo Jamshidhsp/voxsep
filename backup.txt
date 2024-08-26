@@ -1,0 +1,99 @@
+Let's implement the **Multi-Scale Global Negatives** approach where global representations from different scales of the feature pyramid act as negatives for each other.
+
+### How the Implementation Will Work:
+
+1. **Multi-Scale Features**: The model will compute global representations at different scales from the feature pyramid.
+2. **Positive and Negative Pairs**: 
+   - **Positive Pair**: The global representation of the patch from one scale will act as the positive.
+   - **Negative Pair**: The global representation of the patch from a different scale will act as the negative.
+3. **Loss Computation**: We'll compute contrastive losses using these multi-scale positive and negative pairs, encouraging the model to distinguish between different scales.
+
+### Modifications to `Vox2Vec`:
+
+We'll adjust the code to extract multi-scale global representations from the feature pyramid and create the appropriate positive and negative pairs.
+
+```python
+class Vox2Vec(pl.LightningModule):
+    def __init__(
+            self,
+            backbone: nn.Module,
+            base_channels: int,
+            num_scales: int,
+            proj_dim: int = proj_dim,
+            temp: float = 0.1,
+            lr: float = 1e-3,
+    ):
+
+        super().__init__()
+        self.save_hyperparameters(ignore='backbone')
+        self.backbone = backbone
+        self.backbone_key = deepcopy(self.backbone)
+        
+        for param_k in self.backbone_key.parameters():
+            param_k.requires_grad = False  
+        
+        self.projector = Projector(proj_dim, sum_pyramid_channels(base_channels, num_scales))
+        self.global_projector = Global_projector()
+        self.temperature = torch.nn.Parameter(torch.tensor(temp))
+        self.queue = Queue(max_size=65000, embedding_size=proj_dim)
+        
+    def _vox_to_vec(self, patches: torch.Tensor, voxels: Iterable[torch.Tensor]) -> torch.Tensor:
+        feature_pyramid = self.backbone(patches)[:]
+        return torch.cat([select_from_pyramid([x[j] for x in feature_pyramid], v) for j, v in enumerate(voxels)])
+
+    def _vox_to_vec_key(self, patches: torch.Tensor, voxels: Iterable[torch.Tensor]) -> torch.Tensor:
+        feature_pyramid = self.backbone_key(patches)[:]
+        return torch.cat([select_from_pyramid([x[j] for x in feature_pyramid], v) for j, v in enumerate(voxels)])
+
+    def momentum_update(self):
+        momentum = 0.90
+        for param_q, param_k in zip(self.backbone.parameters(), self.backbone_key.parameters()):
+            param_k.data = param_k.data * momentum + param_q.data * (1. - momentum)
+
+    def training_step(self, batch, batch_idx):
+        patches_1, patches_1_positive, anchor_voxel_1, positive_voxels = batch['pretrain']
+        
+        # Forward pass for feature pyramid
+        feature_pyramid_1 = self.backbone(patches_1)
+        feature_pyramid_2 = self.backbone(patches_1_positive)
+        
+        # Global features from different scales
+        global_features_scale_1 = [self.global_projector(f) for f in feature_pyramid_1]
+        global_features_scale_2 = [self.global_projector(f) for f in feature_pyramid_2]
+        
+        # Positive pairs: use global features from the same scale
+        positive_pairs = [(global_features_scale_1[i], global_features_scale_2[i]) for i in range(len(global_features_scale_1))]
+        
+        # Negative pairs: use global features from different scales as negatives
+        negative_pairs = [(global_features_scale_1[i], global_features_scale_2[j]) 
+                          for i in range(len(global_features_scale_1)) for j in range(len(global_features_scale_2)) if i != j]
+        
+        # Contrastive loss for multi-scale global features
+        total_loss = 0
+        for pos_pair in positive_pairs:
+            pos_sim = torch.matmul(pos_pair[0], pos_pair[1].T) / self.temperature
+            neg_sims = [torch.matmul(neg_pair[0], neg_pair[1].T) / self.temperature for neg_pair in negative_pairs]
+            
+            # Combine positive and negative logits for loss calculation
+            logits = torch.cat([pos_sim.unsqueeze(0)] + [neg_sim.unsqueeze(0) for neg_sim in neg_sims], dim=0)
+            labels = torch.zeros(logits.size(0), dtype=torch.long).to(logits.device)
+            
+            # Cross-entropy loss for positive and negative pairs
+            loss = F.cross_entropy(logits, labels)
+            total_loss += loss
+        
+        # Average the loss over all scales
+        total_loss /= len(positive_pairs)
+
+        return total_loss
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+```
+
+### Explanation:
+1. **Feature Pyramid Extraction**: We compute the global features for each scale in the feature pyramid using the `global_projector`.
+2. **Positive and Negative Pairs**: We create positive pairs from the same scale's global features and negative pairs from different scales' global features.
+3. **Loss Computation**: We calculate the contrastive loss by combining the positive similarity with negative similarities across scales and apply cross-entropy loss to encourage distinction.
+
+This approach should encourage the model to differentiate between global features across scales while also learning consistent representations within the same scale.

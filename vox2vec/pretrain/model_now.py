@@ -49,9 +49,9 @@ class Global_projector(nn.Module):
         def __init__(self):
             super(Global_projector, self).__init__()
             self.avg_pool = nn.AdaptiveAvgPool3d(1)
-            self.conv = nn.Conv3d(512, 1, 1, 1)
-            self.linear1 = nn.Linear(8, 8)
-            self.linear2 = nn.Linear(8, 1)
+            self.conv = nn.Conv3d(256, 1, 1, 1)
+            self.linear1 = nn.Linear(64, 256)
+            self.linear2 = nn.Linear(256, 1)
             self.relu = nn.ReLU()
         def forward(self, x):
             x = self.conv(x)
@@ -147,8 +147,8 @@ class Vox2Vec(pl.LightningModule):
             proj_dim: int = proj_dim,
             temp: float = 0.1,
             # temp: torch.nn.Parameter(torch.tensor(0.1)),
-            lr: float = 3e-4,
-            # lr: float = 1e-3,
+            # lr: float = 3e-4,
+            lr: float = 1e-3,
             # lr: float = 5e-5,
     ):
 
@@ -228,22 +228,37 @@ class Vox2Vec(pl.LightningModule):
 
         patches_1_negative = patches_1.clone()  
 
+        # negative_voxels_alpha = anchor_voxel_1.clone()
+
+        # for i in range(negative_voxels_alpha.size(0)):
+        #     negative_voxels_alpha[i] = negative_voxels_alpha[i, torch.randperm(negative_voxels_alpha.size(1)), :]
 
         for i in range(patches_1.size(0)):
-            # patches_1_negative_list = []
             for _ in range(np.random.randint(3, 10)):
-                size = np.random.randint(4, 40)
-                # size = 8
+                size = np.random.randint(8, 20)
                 src_h, src_w, src_d = np.random.randint(0, patches_1.size(-1)-size, 3)
                 des_h, des_w, des_d =  np.random.randint(0, patches_1.size(-1)-size, 3)
                 patches_1_negative[i, 0, src_h:src_h+size, src_w:src_w+size, src_d:src_d+size] = patches_1_negative[i, 0, des_h:des_h+size, des_w:des_w+size, des_d:des_d+size]
-                # patches_1_negative_list.append(patches_1_negative)
+                
+            
+            # orig_voxel_coords = anchor_voxel_1[i]
+            # shuffled_voxel_coords = negative_voxels_alpha[i]
+
+            # orig_voxel_values = patches_1_negative[i, 0, orig_voxel_coords[:, 0], orig_voxel_coords[:, 1], orig_voxel_coords[:, 2]].clone()
+
+            # patches_1_negative[i, 0, orig_voxel_coords[:, 0], orig_voxel_coords[:, 1], orig_voxel_coords[:, 2]] = \
+            #     patches_1_negative[i, 0, shuffled_voxel_coords[:, 0], shuffled_voxel_coords[:, 1], shuffled_voxel_coords[:, 2]].clone()*0.
+
+            # patches_1_negative[i, 0, shuffled_voxel_coords[:, 0], shuffled_voxel_coords[:, 1], shuffled_voxel_coords[:, 2]] = orig_voxel_values
 
         assert self.backbone.training
         self.backbone_key.training = False
         assert not self.backbone_key.training
         # plt.imshow(torch.cat(patches_1[0, 0][:, :, 16], patches_1_negative[0, 0][:, :, 16]).detach().cpu().numpy())
         bs = positive_voxels.size(0)
+
+        
+        # embeds_1_key = self.proj_head_key((self._vox_to_vec_key(patches_1, negative_voxels)) + (self.pe(anchor_voxel_1.float(), negative_voxels.float())).view(-1, self.pe_size))
 
         running_loss = 0
         embeds_anchor = self.projector(self._vox_to_vec(patches_1, anchor_voxel_1), anchor_voxel_1, anchor_voxel_1)
@@ -285,7 +300,7 @@ class Vox2Vec(pl.LightningModule):
         # global_loss = F.binary_cross_entropy_with_logits(global_logits, labels)
 
         # global_loss = F.relu(10+global_positive[0]-global_negative[0])
-        print(f'{loss_1.item()}----------{global_loss.item()}')
+        print(f'{loss_1.item()}----------{10*global_loss.item()}')
 
 
         

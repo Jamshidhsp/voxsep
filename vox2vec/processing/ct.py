@@ -8,7 +8,7 @@ from imops import pad
 from vox2vec.utils.misc import apply_along_axes
 
 
-BODY_THRESHOLD_HU = -30000
+BODY_THRESHOLD_HU = -500
 
 
 def get_body_mask(image: np.ndarray) -> np.ndarray:
