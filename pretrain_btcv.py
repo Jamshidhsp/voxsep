@@ -51,11 +51,11 @@ def parse_args():
     parser.add_argument('--spacing', nargs='+', type=float, default=SPACING)
     parser.add_argument('--patch_size', nargs='+', type=int, default=PATCH_SIZE)
     parser.add_argument('--pretrain_batch_size', type=int, default=8)
-    parser.add_argument('--pretrain_num_workers', type=int, default=8)
+    parser.add_argument('--pretrain_num_workers', type=int, default=4)
     parser.add_argument('--probing_batch_size', type=int, default=2)
     parser.add_argument('--probing_num_workers', type=int, default=2)
     parser.add_argument('--num_batches_per_epoch', type=int, default=100)
-    parser.add_argument('--val_every_n_epoch', type=int, default=10)                                 
+    parser.add_argument('--val_every_n_epoch', type=int, default=2)                                 
 
     parser.add_argument('--base_channels', type=int, default=BASE_CHANNELS)
     parser.add_argument('--num_scales', type=int, default=NUM_SCALES)
@@ -135,7 +135,9 @@ def main(args):
         accelerator='gpu',
         max_epochs=-1,
         gradient_clip_val=1.0,
-        check_val_every_n_epoch=args.val_every_n_epoch
+        check_val_every_n_epoch=args.val_every_n_epoch,
+        accumulate_grad_batches=4,
+        track_grad_norm=2
     )
     trainer.fit(
         model=model,
