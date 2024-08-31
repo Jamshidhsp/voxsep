@@ -136,7 +136,7 @@ def main(args):
         max_epochs=-1,
         gradient_clip_val=1.0,
         check_val_every_n_epoch=args.val_every_n_epoch,
-        accumulate_grad_batches=4,
+        accumulate_grad_batches=1,
         track_grad_norm=2
     )
     trainer.fit(

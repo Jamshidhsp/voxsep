@@ -198,7 +198,7 @@ def sample_views(
 
 
     # selected_voxels = roi_voxels_1[indices]
-    # patch_1_positive = MyAugmentation(patch_1_positive)
+    patch_1_positive = MyAugmentation(patch_1_positive)
     # adjusted_voxels = roi_voxels_1
     # patch_1_positive, adjusted_voxels = random_rotation(patch_1_positive, roi_voxels_1)
     # num_negative = max_num_voxels

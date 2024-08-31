@@ -49,10 +49,10 @@ class Global_projector(nn.Module):
         def __init__(self):
             super(Global_projector, self).__init__()
             self.avg_pool = nn.AdaptiveAvgPool3d(1)
-            self.conv = nn.Conv3d(256, 1, 1, 1)
-            self.linear1 = nn.Linear(64, 256)
-            self.linear2 = nn.Linear(256, 1)
-            self.relu = nn.ReLU()
+            self.conv = nn.Conv3d(512, 1, 1, 1)
+            self.linear1 = nn.Linear(16, 8)
+            self.linear2 = nn.Linear(8, 1)
+            self.relu = nn.LeakyReLU()
         def forward(self, x):
             x = self.conv(x)
             # x = self.avg_pool(x).view(x.shape[0], -1)
@@ -63,26 +63,26 @@ class Global_projector(nn.Module):
 
 
 
-class Projector(nn.Module):
-    def __init__(self, proj_dim, embed_dim):
-        super(Projector, self).__init__()
-        self.pe = VoxelPositionalEncoding(proj_dim)
-        self.proj_head = nn.Sequential(
-            nn.Linear(embed_dim, embed_dim),
-            nn.BatchNorm1d(embed_dim),
-            nn.ReLU(),
-            nn.Linear(embed_dim, embed_dim),
-            nn.BatchNorm1d(embed_dim),
-            nn.ReLU(),
-            nn.Linear(embed_dim, proj_dim),
-        )
+# class Projector(nn.Module):
+#     def __init__(self, proj_dim, embed_dim):
+#         super(Projector, self).__init__()
+#         self.pe = VoxelPositionalEncoding(proj_dim)
+#         self.proj_head = nn.Sequential(
+#             nn.Linear(embed_dim, embed_dim),
+#             nn.BatchNorm1d(embed_dim),
+#             nn.ReLU(),
+#             nn.Linear(embed_dim, embed_dim),
+#             nn.BatchNorm1d(embed_dim),
+#             nn.ReLU(),
+#             nn.Linear(embed_dim, proj_dim),
+#         )
     
-    def forward(self, x, anchor, target):
-        x = self.proj_head(x) 
-        position = self.pe(anchor, target).view(-1, x.size(-1))
-        # x_encoded = x + position
-        # return x_encoded
-        return x
+#     def forward(self, x, anchor, target):
+#         x = self.proj_head(x) 
+#         position = self.pe(anchor, target).view(-1, x.size(-1))
+#         # x_encoded = x + position
+#         # return x_encoded
+#         return x
 
 def orthogonality(embedding):
     dot_product = torch.mm(embedding, embedding.T)
@@ -118,8 +118,11 @@ class Queue:
                 self.ptr = len(new_items) - remaining_space
     @torch.no_grad()
     def get(self):
-        # q = F.normalize(self.queue.clone(), p=2, dim=1)
-        q = self.queue.clone()[:]
+
+        self.shuffle()
+        # q = F.normalize(self.queue.clone(), p=2, dim=1)[:1024]
+        q = F.normalize(self.queue.clone(), p=2, dim=1)[:]
+        # q = self.queue.clone()[:]
         return q
 
     def size(self):
@@ -147,8 +150,8 @@ class Vox2Vec(pl.LightningModule):
             proj_dim: int = proj_dim,
             temp: float = 0.1,
             # temp: torch.nn.Parameter(torch.tensor(0.1)),
-            # lr: float = 3e-4,
-            lr: float = 1e-3,
+            lr: float = 3e-4,
+            # lr: float = 1e-3,
             # lr: float = 5e-5,
     ):
 
@@ -164,31 +167,44 @@ class Vox2Vec(pl.LightningModule):
         embed_dim = sum_pyramid_channels(base_channels, num_scales)
         self.pe_size = embed_dim
         # self.attention = FeatureAttention(embed_dim)
-        # self.proj_head = nn.Sequential(
-        #     nn.Linear(embed_dim, embed_dim),
-        #     nn.BatchNorm1d(embed_dim),
-        #     nn.ReLU(),
-        #     nn.Linear(embed_dim, embed_dim),
-        #     nn.BatchNorm1d(embed_dim),
-        #     nn.ReLU(),
-        #     nn.Linear(embed_dim, proj_dim),
-        #     # nn.Sigmoid(),
-        #     # Lambda(F.normalize)
-        # )
+        self.proj_head = nn.Sequential(
+            nn.Linear(embed_dim, embed_dim),
+            nn.BatchNorm1d(embed_dim),
+            nn.ReLU(),
+            nn.Linear(embed_dim, embed_dim),
+            nn.BatchNorm1d(embed_dim),
+            nn.ReLU(),
+            nn.Linear(embed_dim, proj_dim),
+            # nn.Sigmoid(),
+            # Lambda(F.normalize)
+        )
+
+        self.proj_head_key = nn.Sequential(
+            nn.Linear(embed_dim, embed_dim),
+            nn.BatchNorm1d(embed_dim),
+            nn.ReLU(),
+            nn.Linear(embed_dim, embed_dim),
+            nn.BatchNorm1d(embed_dim),
+            nn.ReLU(),
+            nn.Linear(embed_dim, proj_dim),
+            # nn.Sigmoid(),
+            # Lambda(F.normalize)
+        )
+
 
         self.backbone_key = deepcopy(self.backbone)
         for param_k in self.backbone_key.parameters():
             param_k.requires_grad = False  
 
-        self.projector = Projector(proj_dim, embed_dim)
+        # self.projector = Projector(proj_dim, embed_dim)
 
         self.pe = VoxelPositionalEncoding(dim=self.pe_size)
-
-        self.temperature = torch.nn.Parameter(torch.tensor(0.9))
+        self.temperature = 0.1
+        # self.temperature = torch.nn.Parameter(torch.tensor(0.1))
         # self.reg_lambda = torch.nn.Parameter(torch.tensor(0.5))
         
         self.lr = lr
-        self.queue = Queue(max_size=65000, embedding_size=proj_dim)
+        self.queue = Queue(max_size=9500, embedding_size=proj_dim)
         self.global_projector = Global_projector()
 
     def _vox_to_vec(self, patches: torch.Tensor, voxels: Iterable[torch.Tensor]) -> torch.Tensor:
@@ -205,92 +221,83 @@ class Vox2Vec(pl.LightningModule):
     
     @torch.no_grad()
     def momentum_update(self):
-        momentum = 0.90
+        momentum = 0.999
         with torch.no_grad():
             for param_q, param_k in zip(self.backbone.parameters(), self.backbone_key.parameters()):
                 param_k.data = param_k.data * momentum + param_q.data * (1. - momentum)
-            # for param_q, param_k in zip(self.proj_head.parameters(), self.proj_head_key.parameters()):
-            #     param_k.data = param_k.data * momentum + param_q.data * (1. - momentum)
+            for param_q, param_k in zip(self.proj_head.parameters(), self.proj_head_key.parameters()):
+                param_k.data = param_k.data * momentum + param_q.data * (1. - momentum)
         
 
 
     def training_step(self, batch, batch_idx):
 
-        if self.epoch < 1:
-            self.reg_lambda = 1.0
-            self.warm_lambda = 0.0
-        else:
-            self.reg_lambda = 0.05
-            self.warm_lambda = 1.0
+        # if self.epoch < 1:
+        #     self.reg_lambda = 1.0
+        #     self.warm_lambda = 0.0
+        # else:
+        #     self.reg_lambda = 0.05
+        #     self.warm_lambda = 1.0
 
-        patches_1, patches_1_positive, anchor_voxel_1, positive_voxels, negative_voxels = batch['pretrain']
+        patches_1, patches_1_positive, anchor_voxel_1, _, _ = batch['pretrain']
         
-
+        positive_voxels = anchor_voxel_1
         patches_1_negative = patches_1.clone()  
-
-        # negative_voxels_alpha = anchor_voxel_1.clone()
-
-        # for i in range(negative_voxels_alpha.size(0)):
-        #     negative_voxels_alpha[i] = negative_voxels_alpha[i, torch.randperm(negative_voxels_alpha.size(1)), :]
-
+        
+        max_shuffle_size=int(0.5*patches_1.size(-1))
         for i in range(patches_1.size(0)):
-            for _ in range(np.random.randint(3, 10)):
-                size = np.random.randint(8, 20)
+            # patches_1_negative_list = []
+            for _ in range(np.random.randint(1, 10)):
+                size = np.random.randint(4, max_shuffle_size)
+                # size = 8
                 src_h, src_w, src_d = np.random.randint(0, patches_1.size(-1)-size, 3)
                 des_h, des_w, des_d =  np.random.randint(0, patches_1.size(-1)-size, 3)
                 patches_1_negative[i, 0, src_h:src_h+size, src_w:src_w+size, src_d:src_d+size] = patches_1_negative[i, 0, des_h:des_h+size, des_w:des_w+size, des_d:des_d+size]
-                
-            
-            # orig_voxel_coords = anchor_voxel_1[i]
-            # shuffled_voxel_coords = negative_voxels_alpha[i]
-
-            # orig_voxel_values = patches_1_negative[i, 0, orig_voxel_coords[:, 0], orig_voxel_coords[:, 1], orig_voxel_coords[:, 2]].clone()
-
-            # patches_1_negative[i, 0, orig_voxel_coords[:, 0], orig_voxel_coords[:, 1], orig_voxel_coords[:, 2]] = \
-            #     patches_1_negative[i, 0, shuffled_voxel_coords[:, 0], shuffled_voxel_coords[:, 1], shuffled_voxel_coords[:, 2]].clone()*0.
-
-            # patches_1_negative[i, 0, shuffled_voxel_coords[:, 0], shuffled_voxel_coords[:, 1], shuffled_voxel_coords[:, 2]] = orig_voxel_values
-
+                # patches_1_negative_list.append(patches_1_negative)
+        
+        
         assert self.backbone.training
         self.backbone_key.training = False
         assert not self.backbone_key.training
         # plt.imshow(torch.cat(patches_1[0, 0][:, :, 16], patches_1_negative[0, 0][:, :, 16]).detach().cpu().numpy())
         bs = positive_voxels.size(0)
 
-        
-        # embeds_1_key = self.proj_head_key((self._vox_to_vec_key(patches_1, negative_voxels)) + (self.pe(anchor_voxel_1.float(), negative_voxels.float())).view(-1, self.pe_size))
-
+        self.momentum_update()
         running_loss = 0
-        embeds_anchor = self.projector(self._vox_to_vec(patches_1, anchor_voxel_1), anchor_voxel_1, anchor_voxel_1)
-        self.queue.update(embeds_anchor.view(-1, 128))
+        # embeds_anchor = self.proj_head(self._vox_to_vec(patches_1, anchor_voxel_1), anchor_voxel_1, anchor_voxel_1)
+        embeds_anchor = self.proj_head(self._vox_to_vec(patches_1, anchor_voxel_1))
         with torch.no_grad():
-            embeds_positive = self.projector(self._vox_to_vec_key(patches_1_positive, positive_voxels), anchor_voxel_1, anchor_voxel_1)
+        # embeds_positive = self.proj_head(self._vox_to_vec_key(patches_1_positive, positive_voxels), anchor_voxel_1, anchor_voxel_1)
+            embeds_positive = self.proj_head_key(self._vox_to_vec_key(patches_1_positive, positive_voxels))
         # embeds_negative = self.projector(self._vox_to_vec(patches_1, negative_voxels), anchor_voxel_1, anchor_voxel_1)
         
-        self.queue.shuffle()
+        # self.queue.shuffle()
         embeds_key = self.queue.get().to(embeds_anchor.device)
+        # print(self.backbone.right_blocks[0].layers[1].layers[5].grad[0])
 
         embeds_anchor = F.normalize(embeds_anchor, p=2, dim=1)
         embeds_positive = F.normalize(embeds_positive, p=2, dim=1)
-        # embeds_negative = F.normalize(embeds_negative, p=2, dim=1)
-        embeds_key = F.normalize(embeds_key, p=2, dim=1)
-        
-        # embeds_anchor = embeds_anchor.view(bs, 128)
-        # embeds_anchor = embeds_anchor.view(bs, -1, 128)
-        # embeds_positive = embeds_positive.view(bs, -1, 128)
-        # embeds_negative = embeds_negative.view(bs, -1, 128)
-
-                
-        # pos_sim = torch.matmul(embeds_anchor, embeds_positive.transpose(-1, -2)) / self.temperature  # (batch_size, 1, num_pos)
-        # neg_sim = torch.matmul(embeds_anchor, embeds_negative.transpose(-1, -2)) / self.temperature  # (batch_size, 1, num_neg)
+        # logits_11 = torch.matmul(embeds_anchor, embeds_anchor.T)/self.temperature
         logits_12 = torch.matmul(embeds_anchor, embeds_positive.T)/self.temperature
         logits_22 = torch.matmul(embeds_anchor, embeds_key.T)/self.temperature
-        # pos_exp = torch.exp(pos_sim)
-        # neg_exp = torch.exp(neg_sim).sum(dim=-1, keepdim=True)
-        # running_loss = -torch.log(pos_exp / (pos_exp + neg_exp)).mean()
 
-        loss_1 = torch.mean(-logits_12.diag() + torch.logsumexp(torch.cat([logits_12, logits_22], dim=1), dim=1))
-        
+        loss_1 = torch.mean(-logits_12.diag() + torch.logsumexp(torch.cat([logits_12.fill_diagonal_(float('-inf')), logits_22], dim=1), dim=1))
+
+        '''
+        logits_12 = torch.matmul(embeds_anchor, embeds_positive.T) / self.temperature
+        logits_22 = torch.matmul(embeds_anchor, embeds_key.T) / self.temperature
+
+        # Ensure the positive pair is compared against the negatives
+        logits = torch.cat([logits_12.diag().unsqueeze(-1), logits_22], dim=1)
+
+        # The label for the positive pair is 0
+        labels = torch.zeros(logits.size(0), dtype=torch.long).to(embeds_anchor.device)
+
+        # Calculate the cross-entropy loss
+        loss = F.cross_entropy(logits, labels)
+        '''
+
+        '''
         global_positive = self.global_projector(self.backbone(patches_1)[-1])
         global_negative = self.global_projector(self.backbone(patches_1_negative)[-1])
         global_logits = torch.cat((global_positive, global_negative), dim=1)
@@ -300,7 +307,7 @@ class Vox2Vec(pl.LightningModule):
         # global_loss = F.binary_cross_entropy_with_logits(global_logits, labels)
 
         # global_loss = F.relu(10+global_positive[0]-global_negative[0])
-        print(f'{loss_1.item()}----------{10*global_loss.item()}')
+        # print(f'{loss_1.item()}----------{global_loss.item()} ')
 
 
         
@@ -308,11 +315,19 @@ class Vox2Vec(pl.LightningModule):
         
         
         
-        
-        running_loss = 1.*(loss_1) + global_loss
-
-
-
+        running_loss = global_loss
+        '''
+        running_loss = loss_1   
+        # running_loss = 0.*(loss_1) + 1.*global_loss
+        queue_mean = self.queue.get().mean()
+        queue_std = self.queue.get().std()
+        self.log(f'pretrain/info_nce_loss_local', loss_1, on_epoch=True)
+        # self.log(f'pretrain/global_loss', global_loss, on_epoch=True)
+        # self.log(f'pretrain/running_loss', running_loss, on_epoch=True)
+        self.log(f'queue_mean', queue_mean, on_epoch=True)
+        self.log(f'queue_std', queue_std, on_epoch=True)
+        # self.log(f'queue_std', self.queue.get().std, on_epoch=True)
+        # tb_writer.add_scalar('queue/mean_embedding_norm', mean_embedding.norm().item(), step)
 
         
         # pos_sim = torch.einsum('b d, b p d -> b p', embeds_anchor, embeds_positive)  # (bs, num_positive)
@@ -345,23 +360,29 @@ class Vox2Vec(pl.LightningModule):
         
         # running_loss = self.warm_lambda*(loss) + ((self.reg_lambda))*(reg_1_loss +reg_2_loss) 
         # running_loss = 1+ warm_lambda*(loss_pos - loss_neg) + (torch.abs(self.reg_lambda))*(reg_1_loss +reg_2_loss) 
-        tb.add_text('experiment', 'only_positive_sanity_check', 0)
+        # tb.add_text('experiment', 'only_positive_sanity_check', 0)
         # tb.add_scalar('Loss/loss_neg', loss_neg.item(), batch_idx)
         # tb.add_scalar('Loss/loss_pos', loss_pos.item(), batch_idx)
         # tb.add_scalar('Loss/regularizer', self.reg_lambda.item(), batch_idx)
-        tb.add_scalar('Loss/running_loss', running_loss.item(), batch_idx)
-
+        # tb.add_scalar('Loss/running_loss', running_loss.item(), batch_idx)
         
-        global_step = str(self.epoch) + "_" + str(batch_idx)
+        global_step = str(self.epoch)
         # metadata= ['anchor']*bs*embeds_positive.size(1) + ['positive']*embeds_positive.size(1)*bs + ['negative']*embeds_negative.size(1)*bs
         # all_embeddings = torch.cat((embeds_anchor, embeds_positive.view(-1, embeds_positive.size(-1)), embeds_negative.view(-1, embeds_negative.size(-1))), dim=0)
-        # all_embeddings = torch.cat((embeds_anchor.view(-1, embeds_positive.size(-1)), embeds_positive.view(-1, embeds_positive.size(-1)), embeds_negative.view(-1, embeds_negative.size(-1))), dim=0)
-        # if batch_idx+1 ==100:
-        #     tb.add_embedding(all_embeddings, metadata=metadata, label_img=None, global_step=global_step, tag='all_embedding')
-        #     self.momentum_update()
-        #     self.epoch+=1
+        if batch_idx%1==0:
+            self.queue.update(embeds_positive.view(-1, 128)[:int(1.*(embeds_positive.view(-1, 128)).size(0))])
+        
+        metadata= ['anchor']*embeds_positive.view(-1, 128).size(0) + ['positive']*embeds_positive.view(-1, 128).size(0) + ['negative']*embeds_key.view(-1, 128).size(0)
+        all_embeddings = torch.cat((embeds_anchor.view(-1, embeds_positive.size(-1)), embeds_positive.view(-1, embeds_positive.size(-1)), embeds_key.view(-1, embeds_key.size(-1))), dim=0)
+        if batch_idx+1 ==100:
+            tb.add_embedding(all_embeddings, metadata=metadata, label_img=None, global_step=global_step, tag='all_embedding')
+            # self.queue.update(embeds_positive.view(-1, 128)[:int(0.001*(embeds_positive.view(-1, 128)).size(0))])
+            self.epoch+=1
     
 
+        # if self.epoch==1:
+        #     self.queue.update(embeds_positive.view(-1, 128)[:int(1*(embeds_positive.view(-1, 128)).size(0))])
+        self.momentum_update()
         # metadata = labels_positive + labels_positive + labels_negative
 
 # Combine embeddings

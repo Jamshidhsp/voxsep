@@ -20,10 +20,9 @@ def select_from_pyramid(
         torch.Tensor: tensor of shape ``(n, \sum_i c_i)``
     """
     # s = torch.cat([x.moveaxis(0, -1)[(indices // 2 ** i).unbind(1)] for i, x in enumerate(feature_pyramid)], dim=1)
-    # s = torch.cat([x.moveaxis(0, -1)[(indices // 2 ** 2).unbind(1)] for i, x in enumerate(feature_pyramid[1].unsqueeze(0))], dim=1)
-    # test = [x.moveaxis(0, -1)[(indices // 2 ** i).unbind(1)] for i, x in enumerate(feature_pyramid)]
+    indices=indices[:, :2]
+    s = torch.cat([x.moveaxis(0, -1)[(indices[:, 0] // 2 ** i, indices[:, 1] // 2 ** i)].mean(dim=1) for i, x in enumerate(feature_pyramid)], dim=1)
 
-    s = torch.cat([x.moveaxis(0, -1)[(indices // 2 ** i).unbind(1)] for i, x in enumerate(feature_pyramid)], dim=1)
     # s_list = []
     # for i, x in enumerate(feature_pyramid):
     #     s_list.append(x.moveaxis(0, -1)[(indices // 2 ** i).unbind(1)])

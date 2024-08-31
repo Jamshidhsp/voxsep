@@ -68,9 +68,9 @@ class FPN3d(nn.Module):
         self.right_blocks = nn.ModuleList(right_blocks)
         self.base_channels = base_channels
         self.num_scales = num_scales
-        self.right_blocks[4].layers[1].layers[5].weight = torch.nn.Parameter(torch.zeros_like(self.right_blocks[4].layers[1].layers[5].weight))
-        self.right_blocks[4].layers[1].layers[5].bias = torch.nn.Parameter(torch.zeros_like(self.right_blocks[4].layers[1].layers[5].bias))
-        self.right_blocks[4].layers[1].layers[4] = nn.Tanh()
+        # self.right_blocks[4].layers[1].layers[5].weight = torch.nn.Parameter(torch.zeros_like(self.right_blocks[4].layers[1].layers[5].weight))
+        # self.right_blocks[4].layers[1].layers[5].bias = torch.nn.Parameter(torch.zeros_like(self.right_blocks[4].layers[1].layers[5].bias))
+        # self.right_blocks[4].layers[1].layers[4] = nn.Tanh()
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.first_conv(x)
