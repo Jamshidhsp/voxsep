@@ -13,14 +13,12 @@ from vox2vec.nn import Lambda
 from vox2vec.nn.functional import select_from_pyramid, sum_pyramid_channels
 import numpy as np
 from copy import deepcopy
-
+import random
 from torch.utils.tensorboard import SummaryWriter
 
 tb = SummaryWriter()
 
 proj_dim = 128
-
-import torch.nn as nn
 
 class VoxelPositionalEncoding(nn.Module):
     def __init__(self, dim):
@@ -38,20 +36,11 @@ class AttentionContextualization(nn.Module):
     def __init__(self, feature_dim, num_heads=4, lambda_param=0.2):
         super(AttentionContextualization, self).__init__()
         self.lambda_param = lambda_param
-
-        # self.memory_bank = torch.randn(memory_bank_size, feature_dim)  # Memory bank
-        # self.memory_bank_size = memory_bank_size
-        # self.memory_bank.requires_grad = False  # Memory bank is not trained directly
         self.attention = nn.MultiheadAttention(embed_dim=feature_dim, num_heads=num_heads)
-        self.memory_ptr = 0
 
-    def forward(self, queries, memory_bank):
+    def forward(self, queries, keys, values):
         # Normalize queries for attention mechanism
-        queries = F.normalize(queries, dim=-1)
-
-        # Use memory bank as keys and values for cross-attention
-        keys = memory_bank.clone().detach().to(queries.device)
-        values = memory_bank.clone().detach().to(queries.device)
+        # queries = F.normalize(queries, dim=-1)
 
         # Queries: current image features
         # Keys/Values: memory bank features
@@ -62,20 +51,6 @@ class AttentionContextualization(nn.Module):
         contextualized_features = self.lambda_param * contextualized_features + (1 - self.lambda_param) * queries
 
         return contextualized_features
-
-    @torch.no_grad()
-    def update_memory_bank(self, new_features):
-        batch_size = new_features.size(0)
-        end_ptr = self.memory_ptr + batch_size
-
-        if end_ptr >= self.memory_bank_size:
-            overflow = end_ptr - self.memory_bank_size
-            self.memory_bank[self.memory_ptr:self.memory_bank_size] = new_features[:batch_size - overflow]
-            self.memory_bank[0:overflow] = new_features[batch_size - overflow:]
-            self.memory_ptr = overflow
-        else:
-            self.memory_bank[self.memory_ptr:end_ptr] = new_features
-            self.memory_ptr = end_ptr
 
 class Global_projector(nn.Module):
     def __init__(self):
@@ -93,18 +68,13 @@ class Global_projector(nn.Module):
         x = self.linear2(x)
         return x
 
-def orthogonality(embedding):
-    dot_product = torch.mm(embedding, embedding.T)
-    dot_product.fill_diagonal_(0)
-    loss = torch.sum((dot_product)**2)
-    return loss/(embedding.size(0)*(embedding.size(0)-1))
-
 class Queue:
     def __init__(self, max_size, embedding_size):
         self.max_size = max_size
         self.embedding_size = embedding_size
         self.queue = torch.randn(max_size, embedding_size)
         self.ptr = 0  
+        self.reset_fraction = 0.4
 
     @torch.no_grad()
     def enqueue(self, item):
@@ -128,8 +98,9 @@ class Queue:
 
     @torch.no_grad()
     def get(self):
-        self.shuffle()
-        q = F.normalize(self.queue.clone(), p=2, dim=1)[:]
+        # self.shuffle()
+        # q = F.normalize(self.queue.clone(), p=2, dim=1)[:]
+        q = self.queue.clone()[:]
         return q
 
     def size(self):
@@ -140,6 +111,13 @@ class Queue:
         max_index = self.max_size if self.ptr == 0 or self.ptr == self.max_size else self.ptr
         shuffle_indices = torch.randperm(max_index)
         self.queue[:max_index] = self.queue[shuffle_indices]
+
+    @torch.no_grad()
+    def reset_queue(self, reset_fraction):
+        # Reset a fraction of the queue to reintroduce diversity
+        num_reset = int(self.max_size * reset_fraction)
+        self.queue[:num_reset] = torch.randn(num_reset, self.embedding_size).to(self.queue.device)
+        
 
 class Vox2Vec(pl.LightningModule):
     def __init__(
@@ -185,13 +163,14 @@ class Vox2Vec(pl.LightningModule):
             param_k.requires_grad = False  
 
         self.pe = VoxelPositionalEncoding(dim=self.pe_size)
-        self.temperature = 0.1
+        self.temperature = 0.09
+        # self.temperature = nn.Parameter(torch.log(torch.exp(torch.tensor(0.1))))
         self.lr = lr
-        self.queue = Queue(max_size=9500, embedding_size=proj_dim)
+        self.queue = Queue(max_size=1024*8, embedding_size=embed_dim)  # Queue now stores pre-projection features
         self.global_projector = Global_projector()
 
         # Add AttentionContextualization
-        self.contextualization = AttentionContextualization(feature_dim=proj_dim)
+        self.contextualization = AttentionContextualization(feature_dim=embed_dim)
 
     def _vox_to_vec(self, patches: torch.Tensor, voxels: Iterable[torch.Tensor]) -> torch.Tensor:
         feature_pyramid = self.backbone(patches)[:]
@@ -203,7 +182,7 @@ class Vox2Vec(pl.LightningModule):
     
     @torch.no_grad()
     def momentum_update(self):
-        momentum = 0.999
+        momentum = 0.9999
         with torch.no_grad():
             for param_q, param_k in zip(self.backbone.parameters(), self.backbone_key.parameters()):
                 param_k.data = param_k.data * momentum + param_q.data * (1. - momentum)
@@ -213,68 +192,79 @@ class Vox2Vec(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         patches_1, patches_1_positive, anchor_voxel_1, _, _ = batch['pretrain']
         positive_voxels = anchor_voxel_1
-        patches_1_negative = patches_1.clone()  
-        
-        max_shuffle_size = int(0.5 * patches_1.size(-1))
-        for i in range(patches_1.size(0)):
-            for _ in range(np.random.randint(1, 10)):
-                size = np.random.randint(4, max_shuffle_size)
-                src_h, src_w, src_d = np.random.randint(0, patches_1.size(-1) - size, 3)
-                des_h, des_w, des_d = np.random.randint(0, patches_1.size(-1) - size, 3)
-                patches_1_negative[i, 0, src_h:src_h+size, src_w:src_w+size, src_d:src_d+size] = patches_1_negative[i, 0, des_h:des_h+size, des_w:des_w+size, des_d:des_d+size]
-        
+
+        # Ensure backbone is in training mode and the key backbone is frozen
         assert self.backbone.training
         self.backbone_key.training = False
+        self.proj_head_key.training = False
         assert not self.backbone_key.training
         bs = positive_voxels.size(0)
 
         self.momentum_update()
 
-        # Generate embeddings
-        embeds_anchor = self.proj_head(self._vox_to_vec(patches_1, anchor_voxel_1))
-        # with torch.no_grad():
-        embeds_positive = self.proj_head(self._vox_to_vec_key(patches_1_positive, positive_voxels))
+        
+        features_anchor = self._vox_to_vec(patches_1, anchor_voxel_1)
+        
+        
+        features_positive = self._vox_to_vec_key(patches_1_positive, positive_voxels)
 
-        # Contextualize embeddings using attention
-        embeds_anchor_contextualized = self.contextualization(embeds_anchor, self.queue.get())
-        embeds_positive_contextualized = self.contextualization(embeds_positive,  self.queue.get())
+        
+        keys_values = self.queue.get().detach().clone().to(features_anchor.device)
 
-        # Update the memory bank with new positive embeddings
-        # self.contextualization.update_memory_bank(embeds_positive_contextualized.view(-1, proj_dim))
+        
+        features_anchor_contextualized = self.contextualization(features_anchor, keys_values, keys_values)
+        features_positive_contextualized = self.contextualization(features_positive, keys_values, keys_values)
 
-        embeds_key = self.queue.get().to(embeds_anchor.device)
+        
+        embeds_anchor = self.proj_head(features_anchor_contextualized)
+        embeds_positive = self.proj_head_key(features_positive_contextualized)
+        
+        with torch.no_grad():  # No gradients for negative samples from the queue
+            embeds_key = self.proj_head_key(self.queue.get().detach().clone().to(features_anchor.device))
 
-        # Normalize embeddings before computing logits
-        embeds_anchor_contextualized = F.normalize(embeds_anchor_contextualized, p=2, dim=1)
-        embeds_positive_contextualized = F.normalize(embeds_positive_contextualized, p=2, dim=1)
+        if random.uniform(0, 1) < 10.5:
+                # self.queue.update(features_positive_contextualized.view(-1, features_positive_contextualized.size(-1))[:int(1.01*embeds_positive.size(0))])
+                self.queue.update(features_positive_contextualized.detach().clone().view(-1, features_positive_contextualized.size(-1)))
+    
+        
+        if random.uniform(0, 1) < 0.2:
+            self.queue.reset_queue(random.uniform(0, 1))
+      
+        embeds_anchor = F.normalize(embeds_anchor, p=2, dim=1)
+        embeds_positive = F.normalize(embeds_positive, p=2, dim=1)
+        embeds_key = F.normalize(embeds_key, p=2, dim=1)
 
-        logits_12 = torch.matmul(embeds_anchor_contextualized, embeds_positive_contextualized.T) / self.temperature
-        logits_22 = torch.matmul(embeds_anchor_contextualized, embeds_key.T) / self.temperature
+        # 8. Compute contrastive loss
+        logits_12 = torch.matmul(embeds_anchor, embeds_positive.T) / self.temperature
+        logits_12_1 = torch.matmul(embeds_anchor, embeds_anchor.T) / self.temperature
+        logits_12_2 = torch.matmul(embeds_positive, embeds_positive.T) / self.temperature
+        logits_22 = torch.matmul(embeds_anchor, embeds_key.T) / self.temperature
 
-        loss_1 = torch.mean(-logits_12.diag() + torch.logsumexp(torch.cat([logits_12, logits_22], dim=1), dim=1))
+        loss_1 = (-logits_12.diag()).mean() 
+        loss_2 = torch.logsumexp(torch.cat([logits_12, logits_22, logits_12_1.fill_diagonal_(float('-inf')), logits_12_2.fill_diagonal_(float('-inf'))], dim=1), dim=1).mean()
 
-        running_loss = loss_1   
+        running_loss = loss_1 + loss_2
 
         # Log metrics
         queue_mean = self.queue.get().mean()
         queue_std = self.queue.get().std()
-        self.log('pretrain/info_nce_loss_local', loss_1, on_epoch=True)
+        self.log('pretrain/info_nce_loss_local', running_loss, on_epoch=True)
+        self.log('pretrain/positive_loss', loss_1, on_epoch=True)
+        self.log('pretrain/negative_loss', loss_2, on_epoch=True)
         self.log('queue_mean', queue_mean, on_epoch=True)
         self.log('queue_std', queue_std, on_epoch=True)
+        # self.log('temperature', self.temperature.item(), on_epoch=True)
 
         global_step = str(self.epoch)
-        metadata = ['anchor'] * embeds_positive_contextualized.view(-1, 128).size(0) + ['positive'] * embeds_positive_contextualized.view(-1, 128).size(0) + ['negative'] * embeds_key.view(-1, 128).size(0)
-        all_embeddings = torch.cat((embeds_anchor_contextualized.view(-1, embeds_positive_contextualized.size(-1)), embeds_positive_contextualized.view(-1, embeds_positive_contextualized.size(-1)), embeds_key.view(-1, embeds_key.size(-1))), dim=0)
+        metadata = ['anchor'] * embeds_positive.view(-1, 128).size(0) + ['positive'] * embeds_positive.view(-1, 128).size(0) + ['negative'] * embeds_key.view(-1, 128).size(0)
+        all_embeddings = torch.cat((embeds_anchor.view(-1, embeds_positive.size(-1)), embeds_positive.view(-1, embeds_positive.size(-1)), embeds_key.view(-1, embeds_key.size(-1))), dim=0)
         
         if batch_idx + 1 == 100:
             tb.add_embedding(all_embeddings, metadata=metadata, label_img=None, global_step=global_step, tag='all_embedding')
             self.epoch += 1
 
-        # Update queue
-        if batch_idx % 1 == 0:
-            self.queue.update(embeds_positive_contextualized.view(-1, proj_dim)[:int(1.0 * (embeds_positive_contextualized.view(-1, proj_dim)).size(0))])
-
         return running_loss
+
 
     def validation_step(self, batch, batch_idx):
         pass
