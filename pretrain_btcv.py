@@ -1,8 +1,8 @@
 from argparse import ArgumentParser
 
 import resource
-rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
-resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
+# rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+# resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
 
 from torch.utils.data import DataLoader
 
@@ -13,7 +13,7 @@ from vox2vec.default_params import *
 from vox2vec.pretrain.data import PretrainDataset
 from vox2vec.utils.data import ResizeByRandomSampling
 from vox2vec.eval.btcv import BTCV
-from vox2vec.nn import FPN3d, FPNLinearHead, FPNNonLinearHead
+from vox2vec.nn import FPN3d, FPNLinearHead, FPNNonLinearHead, Reconstruction
 from vox2vec.pretrain.model import Vox2Vec
 # from vox2vec.pretrain.model_modified import Vox2Vec
 from vox2vec.eval.online_probing import OnlineProbing
@@ -99,6 +99,7 @@ def main(args):
     in_channels = 1
     backbone = FPN3d(in_channels, args.base_channels, args.num_scales)
     # backbone = FPN3dUniform(in_channels, args.base_channels, args.num_scales)
+    # backbone = Reconstruction(args.base_channels, args.num_scales)
     model = Vox2Vec(
         backbone=backbone,
         base_channels=args.base_channels,

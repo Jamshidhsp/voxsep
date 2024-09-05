@@ -297,7 +297,7 @@ class Vox2Vec(pl.LightningModule):
         loss = F.cross_entropy(logits, labels)
         '''
 
-        '''
+        
         global_positive = self.global_projector(self.backbone(patches_1)[-1])
         global_negative = self.global_projector(self.backbone(patches_1_negative)[-1])
         global_logits = torch.cat((global_positive, global_negative), dim=1)
@@ -316,7 +316,7 @@ class Vox2Vec(pl.LightningModule):
         
         
         running_loss = global_loss
-        '''
+        
         running_loss = loss_1   
         # running_loss = 0.*(loss_1) + 1.*global_loss
         queue_mean = self.queue.get().mean()

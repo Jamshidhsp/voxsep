@@ -18,12 +18,12 @@ def parse_args():
     parser = ArgumentParser()
     
     parser.add_argument('--dataset', default='btcv')
-    parser.add_argument('--btcv_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/btcv_single_volume/', required=False)
-    parser.add_argument('--cache_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/cache/1', required=False)
+    parser.add_argument('--btcv_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/server_datasets/btcv', required=False)
+    parser.add_argument('--cache_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/cache', required=False)
     # iternorm_end2end
     # parser.add_argument('--ckpt', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/evaluate_models_server/v1/best-v1.ckpt', required=False)
     # vox2vec_end2end
-    parser.add_argument('--ckpt', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/evaluate_models_server/prob_iternorm/best1.ckpt', required=False)
+    parser.add_argument('--ckpt', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/logs_btcv_to_btcv/pretrain/V2V_global/checkpoints/epoch=335-step=33600.ckpt', required=False)
     # parser.add_argument('--setup', default='from_scratch', required=False)
     parser.add_argument('--setup', default='probing', required=False)
     parser.add_argument('--log_dir', default='/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/logs', required=False)
@@ -32,8 +32,8 @@ def parse_args():
     parser.add_argument('--spacing', nargs='+', type=float, default=SPACING)
     parser.add_argument('--patch_size', nargs='+', type=int, default=PATCH_SIZE)
 
-    parser.add_argument('--batch_size', type=int, default=16)
-    parser.add_argument('--num_workers', type=int, default=8)
+    parser.add_argument('--batch_size', type=int, default=1)
+    parser.add_argument('--num_workers', type=int, default=2)
     parser.add_argument('--num_batches_per_epoch', type=int, default=1)
     parser.add_argument('--max_epochs', type=int, default=1)
     parser.add_argument('--warmup_epochs', type=int, default=50)  # used only in finetuning setup
@@ -64,7 +64,7 @@ def main(args):
 
     in_channels = 1
     backbone = FPN3d(in_channels, args.base_channels, args.num_scales)
-    backbone = FPN3d_iternorm(in_channels, args.base_channels, args.num_scales)
+    # backbone = FPN3d_iternorm(in_channels, args.base_channels, args.num_scales)
     if args.setup == 'from_scratch':
         head = FPNLinearHead(args.base_channels, args.num_scales, num_classes)
         model = EndToEnd(backbone, head, patch_size=tuple(args.patch_size))
@@ -75,9 +75,10 @@ def main(args):
         if args.ckpt is not None:
             sd = torch.load(args.ckpt)['state_dict']
             modified_state_dict = {k[len("backbone."):]: v for k, v in sd.items() if k.startswith("backbone.")}
-            backbone.load_state_dict(modified_state_dict)
+            backbone.load_state_dict(modified_state_dict, strict=False)
+            
         heads = [
-            FPNLinearHead(args.base_channels, args.num_scales, num_classes),
+            # FPNLinearHead(args.base_channels, args.num_scales, num_classes),
             FPNNonLinearHead(args.base_channels, args.num_scales, num_classes)
         ]
         model = Probing(backbone, *heads, patch_size=tuple(args.patch_size))

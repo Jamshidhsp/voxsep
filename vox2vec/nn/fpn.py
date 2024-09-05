@@ -7,6 +7,28 @@ from vox2vec.default_params import *
 from .blocks import ResBlock3d, StackMoreLayers, ResBlock3d_IterNorm
 
 
+class Reconstruction(nn.Module):
+    def __init__(self, base_channels, num_scales):
+        super(Reconstruction, self).__init__()
+        layers = []
+        in_channels = 1
+        # for i in (num_scales)
+        for i in range(num_scales):
+            out_channels = base_channels * (2 ** i)
+            layers.append(nn.Conv3d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, padding=1))
+            layers.append(nn.LeakyReLU())
+            in_channels = out_channels
+
+        self.main = nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.main(x)
+        return x
+
+        
+    
+
+
 
 class FPN3d(nn.Module):
     def __init__(
@@ -49,7 +71,6 @@ class FPN3d(nn.Module):
                 
             ))
             up_blocks.insert(0, nn.Sequential(
-                # nn.Tanh(),
                 nn.Conv3d(c * 2, c, kernel_size=1),
                 nn.Upsample(scale_factor=2, mode='nearest')
             ))
