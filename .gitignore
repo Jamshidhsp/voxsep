@@ -186,12 +186,14 @@ evaluate_models_server/
 __MACOSX
 *.png
 *.sh
+*.pth
 *.json
 *.nii.gz
 dataset_backup
 dataset_download
 .vscode
-
+*.pt
+*.th
 *.ipynb
 cache/*
 cache_new/*
