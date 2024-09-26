@@ -19,7 +19,6 @@ class OnlineProbing(pl.Callback):
             lr: float = 3e-4
     ):
         self.heads = nn.ModuleList(heads)
-        # self.heads = nn.ModuleList(heads)[0]
         self.optimizer = torch.optim.Adam(self.heads.parameters(), lr=lr)
 
         self.patch_size = patch_size

@@ -168,6 +168,7 @@ btcv/
 btcv_new/
 btcv_old/
 btcv_single_volume/
+/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/logs_btcv_to_btcv_single_volume
 cachenoerror/
 evalua
 cache/*
@@ -180,6 +181,7 @@ cache/
 log/
 runs/
 supplementary/
+logs_btcv_to_btcv_single_volume
 logs_original
 logs_btcv_to_btcv
 evaluate_models_server/
