@@ -2,6 +2,7 @@
 SPACING = 1.0, 1.0, 2.0
 # PATCH_SIZE = 128, 128, 32
 PATCH_SIZE = 64, 64, 64
+# PATCH_SIZE = 64
 WINDOW_HU = -1350, 1000
 
 # pre-training

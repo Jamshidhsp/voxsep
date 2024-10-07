@@ -16,17 +16,6 @@ def initialize_weights(m):
         nn.init.xavier_uniform_(m.weight)
         if m.bias is not None:
             nn.init.constant_(m.bias, 0)
-            
-            
-def concat_image(imgs):
-    output = []
-    for img in imgs:
-        img = img['image']
-        output.append(img)
-    output = torch.concatenate(output, dim=1)
-    bs, sw_s, x, y, z = output.size()
-    output = output.view(-1, 1, x, y, z)
-    return output
 
 class ProjectionHead(nn.Module):
     def __init__(self, in_dim=768, hidden_dim=2048, out_dim=2048):
@@ -68,7 +57,7 @@ class Vox2Vec(pl.LightningModule):
         num_scales: int,
         proj_dim: int = proj_dim,
         temp: float = 0.5,
-        lr: float = 3e-4,
+        lr: float = 3e-8,
         output_size=(1, 1, 1),
         hidden_dim: int = 64
     ):
@@ -89,22 +78,14 @@ class Vox2Vec(pl.LightningModule):
             nn.Linear(1008, embed_dim),
             nn.BatchNorm1d(embed_dim),
             nn.ReLU(),
-            nn.Linear(embed_dim, 256),
-            nn.BatchNorm1d(256),
+            nn.Linear(embed_dim, embed_dim),
+            nn.BatchNorm1d(embed_dim),
             nn.ReLU(),
-            # nn.Linear(256, 256),
-            # nn.BatchNorm1d(256),
-            # nn.ReLU(),
-            nn.Linear(256, proj_dim),
+            nn.Linear(embed_dim, proj_dim),
         )
 
-        self.similarity_predictor = nn.Sequential(
-            nn.Linear(proj_dim, 64),
-            nn.BatchNorm1d(64),
-            nn.ReLU(),
-            nn.Linear(64, 1),
-            nn.Sigmoid()
-        )
+        # Remove the similarity_predictor network
+        # self.similarity_predictor = ...
 
     def extract_features_across_scales(self, feature_pyramid):
         pooled_features = []
@@ -117,7 +98,7 @@ class Vox2Vec(pl.LightningModule):
     def _vox_to_vec(self, patches: torch.Tensor) -> torch.Tensor:
         feature_pyramid = self.backbone(patches)
         concatenated_features = self.extract_features_across_scales(feature_pyramid)
-        flattened_features = concatenated_features.contiguous().view(concatenated_features.size(0), -1)
+        flattened_features = concatenated_features.view(concatenated_features.size(0), -1)
         normalized_features = F.normalize(flattened_features, p=2, dim=-1)
         return normalized_features
 
@@ -139,9 +120,8 @@ class Vox2Vec(pl.LightningModule):
                     des_h, des_w, des_d = np.random.randint(0, patches.size(-1) - size, 3)
                     negative_patch[:, src_h:src_h+size, src_w:src_w+size, src_d:src_d+size] = \
                         negative_patch[:, des_h:des_h+size, des_w:des_w+size, des_d:des_d+size]
-                    
-                    # negative_patch[:, src_h:src_h+size, src_w:src_w+size, src_d:src_d+size] = 0.
 
+                # Optional: Compute SSIM scores if needed
                 score, _ = ssim(
                     patches[patch_idx][0].detach().cpu().numpy(),
                     negative_patch[0].detach().cpu().numpy(),
@@ -149,79 +129,67 @@ class Vox2Vec(pl.LightningModule):
                     full=True,
                     multichannel=False
                 )
-                negatives.append(negative_patch)
                 scores.append(torch.tensor(score).float())
+
+                negatives.append(negative_patch)
 
         negatives = torch.stack(negatives)
         scores = torch.stack(scores)
-        return negatives, scores
+        return negatives , scores
 
     def training_step(self, batch, batch_idx):
-        
-
-        patches_1, _, _ = batch['pretrain']
-        patches_1= concat_image(patches_1)
-        
-        # patches_1, _, _, _, _ = batch['pretrain']
+        patches_1, _, _, _, _ = batch['pretrain']
         batch_size = patches_1.size(0)
         num_negatives = self.num_negatives
+
+        # Generate negatives
         negative_patches, scores = self.generate_negatives(patches_1, num_negatives)
+
+        # Compute embeddings
         anchor_embeddings = self.proj_head(self._vox_to_vec(patches_1))  # Shape: [B, D]
         negative_embeddings = self.proj_head(self._vox_to_vec(negative_patches))  # Shape: [B*N, D]
-        anchor_embeddings = F.normalize(anchor_embeddings, p=2, dim=1)
-        negative_embeddings = F.normalize(negative_embeddings, p=2, dim=1)
 
+        # Normalize embeddings
+        anchor_embeddings = F.normalize(anchor_embeddings, p=2, dim=1)  # Shape: [B, D]
+        negative_embeddings = F.normalize(negative_embeddings, p=2, dim=1)  # Shape: [B*N, D]
+
+        # Prepare target labels
         total_negatives = batch_size * num_negatives
         target_labels = torch.zeros(batch_size, total_negatives, device=anchor_embeddings.device)
         for i in range(batch_size):
             start_idx = i * num_negatives
             end_idx = start_idx + num_negatives
-            # Set labels to 1 for own negatives
+            # Set labels to 1 for own negatives (positive pairs)
             target_labels[i, start_idx:end_idx] = scores.view(-1, self.num_negatives)[i]
-            # For other negatives, labels remain 0
+            # Other negatives remain 0 (negative pairs)
 
-        # Compute differences between each anchor and all negatives
-        anchor_embeddings_expanded = anchor_embeddings.unsqueeze(1)  # Shape: [B, 1, D]
-        negative_embeddings_expanded = negative_embeddings.unsqueeze(0)  # Shape: [1, B*N, D]
-        differences = anchor_embeddings_expanded - negative_embeddings_expanded  # Shape: [B, B*N, D]
-        differences_flat = differences.view(-1, self.proj_dim)  # Shape: [B * B*N, D]
+        # Compute cosine similarities between anchors and negatives
+        # Cosine similarity ranges from -1 to 1, but we need logits for BCEWithLogitsLoss
+        # So we can use the raw cosine similarity scores as logits
+        # Compute similarities: [B, D] x [D, B*N] -> [B, B*N]
+        similarity_matrix = torch.mm(anchor_embeddings, negative_embeddings.t())  # Shape: [B, B*N]
 
-        # Predict scores
-        predicted_scores_flat = self.similarity_predictor(differences_flat).squeeze()  # Shape: [B * B*N]
-        predicted_scores = predicted_scores_flat.view(batch_size, total_negatives)  # Shape: [B, B*N]
-        print(predicted_scores)
-        print(target_labels)
-        # Compute loss using Binary Cross-Entropy
-        # loss = F.binary_cross_entropy(predicted_scores, target_labels)
-        # loss = F.mse_loss(predicted_scores, target_labels)
-        
-        
-        loss = -torch.log(F.l1_loss(predicted_scores, target_labels))
-        # Optional: Add self-anchor similarity loss
+        # Compute loss using Binary Cross-Entropy with Logits
+        # loss = F.binary_cross_entropy_with_logits(similarity_matrix, target_labels)
+        loss = F.l1_loss(similarity_matrix, target_labels)
+
+        # Optional: Add self-anchor similarity loss to prevent collapse
         # Compute cosine similarities between anchor embeddings
-        # print('anchor_embeddings.shape', anchor_embeddings.shape)
-        anchor_similarity = torch.mm(anchor_embeddings, anchor_embeddings.T)
+        anchor_similarity = torch.mm(anchor_embeddings, anchor_embeddings.t())
         # Exclude self-similarity
         mask = torch.eye(batch_size, device=anchor_embeddings.device).bool()
         anchor_similarity = anchor_similarity.masked_fill(mask, float('-inf'))
         # Compute self-anchor similarity loss
         self_anchor_similarity_loss = torch.mean(torch.logsumexp(anchor_similarity / self.temperature, dim=1))
-        self.log('self_anchor_similarity_loss', self_anchor_similarity_loss)
 
         # Total loss
-        total_loss = 1.*loss + 0.*self_anchor_similarity_loss
-        # total_loss = self_anchor_similarity_loss
+        total_loss = loss + self_anchor_similarity_loss
 
         self.log('train_loss', total_loss)
         return total_loss
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
-        # optimizer = torch.optim.Adam([
-        #     {'params': self.backbone.parameters(), 'lr':1e-3},
-        #     {'params': list(self.proj_head.parameters())+ list(self.similarity_predictor.parameters()), 'lr':5e-5}
-        # ])
-        # return optimizer
 
     def validation_step(self, batch, batch_idx):
         pass

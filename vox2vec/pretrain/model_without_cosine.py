@@ -16,17 +16,6 @@ def initialize_weights(m):
         nn.init.xavier_uniform_(m.weight)
         if m.bias is not None:
             nn.init.constant_(m.bias, 0)
-            
-            
-def concat_image(imgs):
-    output = []
-    for img in imgs:
-        img = img['image']
-        output.append(img)
-    output = torch.concatenate(output, dim=1)
-    bs, sw_s, x, y, z = output.size()
-    output = output.view(-1, 1, x, y, z)
-    return output
 
 class ProjectionHead(nn.Module):
     def __init__(self, in_dim=768, hidden_dim=2048, out_dim=2048):
@@ -68,7 +57,7 @@ class Vox2Vec(pl.LightningModule):
         num_scales: int,
         proj_dim: int = proj_dim,
         temp: float = 0.5,
-        lr: float = 3e-4,
+        lr: float = 3e-3,
         output_size=(1, 1, 1),
         hidden_dim: int = 64
     ):
@@ -137,10 +126,10 @@ class Vox2Vec(pl.LightningModule):
                     size = np.random.randint(min_swap_size, max_swap_size)
                     src_h, src_w, src_d = np.random.randint(0, patches.size(-1) - size, 3)
                     des_h, des_w, des_d = np.random.randint(0, patches.size(-1) - size, 3)
-                    negative_patch[:, src_h:src_h+size, src_w:src_w+size, src_d:src_d+size] = \
-                        negative_patch[:, des_h:des_h+size, des_w:des_w+size, des_d:des_d+size]
+                    # negative_patch[:, src_h:src_h+size, src_w:src_w+size, src_d:src_d+size] = \
+                        # negative_patch[:, des_h:des_h+size, des_w:des_w+size, des_d:des_d+size]
                     
-                    # negative_patch[:, src_h:src_h+size, src_w:src_w+size, src_d:src_d+size] = 0.
+                    negative_patch[:, src_h:src_h+size, src_w:src_w+size, src_d:src_d+size] = 0.
 
                 score, _ = ssim(
                     patches[patch_idx][0].detach().cpu().numpy(),
@@ -157,20 +146,23 @@ class Vox2Vec(pl.LightningModule):
         return negatives, scores
 
     def training_step(self, batch, batch_idx):
-        
-
-        patches_1, _, _ = batch['pretrain']
-        patches_1= concat_image(patches_1)
-        
-        # patches_1, _, _, _, _ = batch['pretrain']
+        patches_1, _, _, _, _ = batch['pretrain']
         batch_size = patches_1.size(0)
         num_negatives = self.num_negatives
+
+        # Generate negatives and scores
         negative_patches, scores = self.generate_negatives(patches_1, num_negatives)
+
+        # Compute embeddings
         anchor_embeddings = self.proj_head(self._vox_to_vec(patches_1))  # Shape: [B, D]
         negative_embeddings = self.proj_head(self._vox_to_vec(negative_patches))  # Shape: [B*N, D]
+
+
+        # Normalize embeddings
         anchor_embeddings = F.normalize(anchor_embeddings, p=2, dim=1)
         negative_embeddings = F.normalize(negative_embeddings, p=2, dim=1)
 
+        # Prepare target labels
         total_negatives = batch_size * num_negatives
         target_labels = torch.zeros(batch_size, total_negatives, device=anchor_embeddings.device)
         for i in range(batch_size):
@@ -189,14 +181,12 @@ class Vox2Vec(pl.LightningModule):
         # Predict scores
         predicted_scores_flat = self.similarity_predictor(differences_flat).squeeze()  # Shape: [B * B*N]
         predicted_scores = predicted_scores_flat.view(batch_size, total_negatives)  # Shape: [B, B*N]
-        print(predicted_scores)
-        print(target_labels)
+        # print(predicted_scores)
+        # print(target_labels)
         # Compute loss using Binary Cross-Entropy
         # loss = F.binary_cross_entropy(predicted_scores, target_labels)
         # loss = F.mse_loss(predicted_scores, target_labels)
-        
-        
-        loss = -torch.log(F.l1_loss(predicted_scores, target_labels))
+        loss = F.l1_loss(predicted_scores, target_labels)
         # Optional: Add self-anchor similarity loss
         # Compute cosine similarities between anchor embeddings
         # print('anchor_embeddings.shape', anchor_embeddings.shape)
@@ -209,8 +199,9 @@ class Vox2Vec(pl.LightningModule):
         self.log('self_anchor_similarity_loss', self_anchor_similarity_loss)
 
         # Total loss
-        total_loss = 1.*loss + 0.*self_anchor_similarity_loss
-        # total_loss = self_anchor_similarity_loss
+        # total_loss = loss + 0.1*self_anchor_similarity_loss
+        total_loss = self_anchor_similarity_loss
+        total_loss =F.l1_loss(anchor_embeddings, torch.zeros_like(anchor_embeddings))
 
         self.log('train_loss', total_loss)
         return total_loss

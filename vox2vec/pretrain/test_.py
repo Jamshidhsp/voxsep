@@ -19,6 +19,127 @@ from monai.transforms import *
 from math import *
 
 
+def get_loader_1k(args):
+    splits1 = "/btcv.json"
+    splits2 = "/dataset_TCIAcovid19_0.json"
+    splits3 = "/dataset_LUNA16_0.json"
+    # splits3 = "/dataset_HNSCC_0.json"
+    # splits4 = "/dataset_TCIAcolon_v2_0.json"
+    # splits5 = "/dataset_LIDC_0.json"
+    list_dir = "./jsons"
+    list_dir = "/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voco/VoCo/jsons"
+    jsonlist1 = list_dir + splits1
+    jsonlist2 = list_dir + splits2
+    jsonlist3 = list_dir + splits3
+    # jsonlist4 = list_dir + splits4
+    # jsonlist5 = list_dir + splits5
+    datadir1 = "data/linshan/CTs/BTCV"
+    datadir2 = "data/linshan/CTs/TCIAcovid19"
+    datadir3 = "data/linshan/CTs/Luna16-jx"
+    num_workers = 8
+    datalist1 = load_decathlon_datalist(jsonlist1, False, "training", base_dir=datadir1)
+    print("Dataset 1 BTCV: number of data: {}".format(len(datalist1)))
+    new_datalist1 = []
+    for item in datalist1:
+        item_dict = {"image": item["image"]}
+        new_datalist1.append(item_dict)
+
+    # datalist2 = load_decathlon_datalist(jsonlist2, False, "training", base_dir=datadir2)
+    # print("Dataset 2 Covid 19: number of data: {}".format(len(datalist2)))
+
+    # datalist3 = load_decathlon_datalist(jsonlist3, False, "training", base_dir=datadir3)
+    # print("Dataset 3 Luna: number of data: {}".format(len(datalist3)))
+    # new_datalist3 = []
+    # for item in datalist3:
+    #     item_dict = {"image": item["image"]}
+    #     new_datalist3.append(item_dict)
+
+    vallist1 = load_decathlon_datalist(jsonlist1, False, "validation", base_dir=datadir1)
+    # vallist2 = load_decathlon_datalist(jsonlist2, False, "validation", base_dir=datadir2)
+    # vallist3 = load_decathlon_datalist(jsonlist3, False, "validation", base_dir=datadir3)
+    # vallist4 = load_decathlon_datalist(jsonlist4, False, "validation", base_dir=datadir4)
+    # vallist5 = load_decathlon_datalist(jsonlist5, False, "validation", base_dir=datadir5)
+    datalist = new_datalist1 #+ datalist2 + new_datalist3  # + datalist4 + datalist5
+    # datalist = new_datalist1
+    val_files = vallist1 #+ vallist2 + vallist3  # + vallist4 + vallist5
+    print("Dataset all training: number of data: {}".format(len(datalist)))
+    print("Dataset all validation: number of data: {}".format(len(val_files)))
+
+    train_transforms = Compose([LoadImaged(keys=["image"], image_only=True, dtype=np.int16),
+                                EnsureChannelFirstd(keys=["image"]),
+                                Orientationd(keys=["image"], axcodes="RAS"),
+                                ScaleIntensityRanged(
+                                    keys=["image"], a_min=args.a_min, a_max=args.a_max,
+                                    b_min=args.b_min, b_max=args.b_max, clip=True),
+                                SpatialPadd(keys="image", spatial_size=[args.roi_x, args.roi_y,
+                                                                        args.roi_z]),
+                                CropForegroundd(keys=["image"], source_key="image"),
+                                SpatialCropd(keys=["image"], roi_start=[60, 80, 0],
+                                             roi_end=[440, 380, 10000]),
+                                Resized(keys=["image"], mode="trilinear", align_corners=True,
+                                        spatial_size=(384, 384, 96)),
+
+                                # Random
+                                RandShiftIntensityd(keys="image", offsets=0.1, prob=0.0),
+                                CropForegroundd(keys="image", source_key="image", select_fn=threshold),
+                                Resized(keys="image", mode="bilinear", align_corners=True,
+                                        spatial_size=(384, 384, 96)),
+
+                                VoCoAugmentation(args, aug=True)
+                                ])
+
+    val_transforms = Compose([LoadImaged(keys=["image"], image_only=True, dtype=np.int16),
+                              EnsureChannelFirstd(keys=["image"]),
+                              Orientationd(keys=["image"], axcodes="RAS"),
+                              ScaleIntensityRanged(
+                                  keys=["image"], a_min=args.a_min, a_max=args.a_max,
+                                  b_min=args.b_min, b_max=args.b_max, clip=True),
+                              SpatialPadd(keys="image", spatial_size=[args.roi_x, args.roi_y,
+                                                                      args.roi_z]),
+                              CropForegroundd(keys=["image"], source_key="image"),
+                              SpatialCropd(keys=["image"], roi_start=[60, 80, 0],
+                                           roi_end=[440, 380, 10000]),
+                              Resized(keys=["image"], mode="trilinear", align_corners=True,
+                                      spatial_size=(384, 384, 96)),
+                              VoCoAugmentation(args, aug=False)
+                              ])
+
+    if args.cache_dataset:
+        print("Using MONAI Cache Dataset")
+        train_ds = CacheDataset(data=datalist, transform=train_transforms,
+                                cache_rate=0.5, num_workers=num_workers)
+    elif args.smartcache_dataset:
+        print("Using MONAI SmartCache Dataset")
+        train_ds = SmartCacheDataset(
+            data=datalist,
+            transform=train_transforms,
+            replace_rate=1.0,
+            cache_num=2 * args.batch_size * args.sw_batch_size,
+        )
+    else:
+        print("Using Persistent dataset")
+        # train_ds = Dataset(data=datalist, transform=train_transforms)
+        train_ds = PersistentDataset(data=datalist,
+                                     transform=train_transforms,
+                                     pickle_protocol=pickle.HIGHEST_PROTOCOL,
+                                     cache_dir='data/linshan/cache/1.5k')
+
+    if args.distributed:
+        train_sampler = DistributedSampler(dataset=train_ds, even_divisible=True, shuffle=True)
+    else:
+        train_sampler = None
+    train_loader = DataLoader(
+        train_ds, batch_size=args.batch_size, num_workers=num_workers, sampler=train_sampler,
+        drop_last=True, pin_memory=True
+    )
+
+    val_ds = PersistentDataset(data=val_files,
+                               transform=val_transforms,
+                               pickle_protocol=pickle.HIGHEST_PROTOCOL,
+                               cache_dir='data/linshan/cache/1.5k')
+    val_loader = DataLoader(val_ds, batch_size=args.batch_size, num_workers=num_workers, shuffle=False, drop_last=True)
+
+    return train_loader, val_loader
 
 
 def random_split(ls):
@@ -30,32 +151,32 @@ def random_split(ls):
 
 def get_loader(args):
     splits1 = "/btcv.json"
-    # splits2 = "/dataset_TCIAcovid19_0.json"
-    # splits3 = "/dataset_LUNA16_0.json"
-    # splits4 = "/stoic21.json"
-    # splits5 = "/Totalsegmentator_dataset.json"
-    # splits6 = "/flare23.json"
-    # splits7 = "/HNSCC.json"
+    splits2 = "/dataset_TCIAcovid19_0.json"
+    splits3 = "/dataset_LUNA16_0.json"
+    splits4 = "/stoic21.json"
+    splits5 = "/Totalsegmentator_dataset.json"
+    splits6 = "/flare23.json"
+    splits7 = "/HNSCC.json"
 
     list_dir = "./jsons/"
-    list_dir="/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/jsons"
+    list_dir="/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voco/VoCo/jsons"
     jsonlist1 = list_dir + splits1
-    # jsonlist2 = list_dir + splits2
-    # jsonlist3 = list_dir + splits3
-    # jsonlist4 = list_dir + splits4
-    # jsonlist5 = list_dir + splits5
-    # jsonlist6 = list_dir + splits6
-    # jsonlist7 = list_dir + splits7
+    jsonlist2 = list_dir + splits2
+    jsonlist3 = list_dir + splits3
+    jsonlist4 = list_dir + splits4
+    jsonlist5 = list_dir + splits5
+    jsonlist6 = list_dir + splits6
+    jsonlist7 = list_dir + splits7
 
-    datadir1 = "/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voxsep/vox2vec/btcv_voco/BTCV"
-    # datadir2 = ".data/TCIAcovid19"
-    # datadir3 = ".data/Luna16-jx"
-    # datadir4 = ".data/stoic21"
-    # datadir5 = ".data/Totalsegmentator_dataset"
-    # datadir6 = ".data/Flare23"
-    # datadir7 = ".data/HNSCC_convert_v1"
+    datadir1 = "/media/jamshid/b0ad3209-9fa7-42e8-a070-b02947a78943/home/jamshid/git_clones/voco/VoCo/data/BTCV"
+    datadir2 = ".data/TCIAcovid19"
+    datadir3 = ".data/Luna16-jx"
+    datadir4 = ".data/stoic21"
+    datadir5 = ".data/Totalsegmentator_dataset"
+    datadir6 = ".data/Flare23"
+    datadir7 = ".data/HNSCC_convert_v1"
 
-    num_workers = 8
+    num_workers = 4
     datalist1 = load_decathlon_datalist(jsonlist1, False, "training", base_dir=datadir1)
     print("Dataset 1 BTCV: number of data: {}".format(len(datalist1)))
     new_datalist1 = []
@@ -130,10 +251,10 @@ def get_loader(args):
                                      pickle_protocol=pickle.HIGHEST_PROTOCOL,
                                      cache_dir='data/linshan/cache/10k')
 
-    # if args.distributed:
-        # train_sampler = DistributedSampler(dataset=train_ds, even_divisible=True, shuffle=True)
-    # else:
-    train_sampler = None
+    if args.distributed:
+        train_sampler = DistributedSampler(dataset=train_ds, even_divisible=True, shuffle=True)
+    else:
+        train_sampler = None
 
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size, num_workers=num_workers, sampler=train_sampler, shuffle=True,

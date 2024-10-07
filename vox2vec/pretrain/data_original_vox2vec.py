@@ -133,30 +133,28 @@ class PretrainDataset(Dataset):
     def __getitem__(self, i):
         try:
             args = [*self.load_example(self.ids[i]), self.patch_size,
-                self.window_hu, self.min_window_hu, self.max_window_hu,
-                self.max_num_voxels_per_patch]
-        
+                    self.window_hu, self.min_window_hu, self.max_window_hu,
+                    self.max_num_voxels_per_patch]
+            
         except ValueError:
-                args = [*self.load_example(self.ids[i+1]), self.patch_size,
-                self.window_hu, self.min_window_hu, self.max_window_hu,
-                self.max_num_voxels_per_patch]
+            args = [*self.load_example(self.ids[i+1]), self.patch_size,
+                    self.window_hu, self.min_window_hu, self.max_window_hu,
+                    self.max_num_voxels_per_patch]
+
+        views = []
         
+        # Continue sampling until we have valid patches
+        while len(views) < self.batch_size:
+            view = sample_views(*args)
+            
+            if view[0] is not None: 
+                views.append(view)
 
-        views = [sample_views(*args) for _ in range(self.batch_size)]
-
-        # patches_1, patches_1_positive, anchor_voxel_1, positive_voxels, negative_voxels, shifts = zip(*views)
         patches_1, patches_1_positive, _, _, _, _ = zip(*views)
-        
-        
         patches_1 = torch.tensor(np.stack([p[None] for p in patches_1]))
         patches_1_positive = torch.tensor(np.stack([p[None] for p in patches_1_positive]))
 
-        # positive_voxels = torch.stack([torch.tensor(voxels) for voxels in positive_voxels])
-        # negative_voxels = torch.stack([torch.tensor(voxels) for voxels in negative_voxels])
-        # anchor_voxel_1 = torch.stack([torch.tensor(voxels) for voxels in anchor_voxel_1])
-        
-        # return patches_1, patches_1_positive, anchor_voxel_1, positive_voxels, negative_voxels #, shifts
-        return patches_1, patches_1_positive, _, _, _ #, shifts
+        return patches_1, patches_1_positive, _, _, _  # Return patches with less than 70% zero voxels
 
 
 def sample_views(
@@ -175,49 +173,48 @@ def sample_views(
     # roi_voxels_1 = roi_voxels_1_dict.get('voxels_shifted')
     
     
-    # # patch_1_positive = MyAugmentation(patch_1_positive)
+    # patch_1_positive = MyAugmentation(patch_1_positive)
     
-    # # patch_1_positive, adjusted_voxels = random_rotation(patch_1_positive, roi_voxels_1)
+    # patch_1_positive, adjusted_voxels = random_rotation(patch_1_positive, roi_voxels_1)
     
 
-    # valid = (roi_voxels_1 < patch_size)
-    # # valid_2 = np.all((roi_voxels_2 >= 0) & (roi_voxels_2 < patch_size), axis=1)
+    # valid = np.all((roi_voxels_1 >= 0) & (roi_voxels_1 < patch_size), axis=1)
+    # valid_2 = np.all((roi_voxels_2 >= 0) & (roi_voxels_2 < patch_size), axis=1)
 
     
-    # # valid_2 = np.all((adjusted_voxels >= 0) & (adjusted_voxels < patch_size), axis=1)
-    # # valid_2 = True
-    # # valid = valid_1 & valid_2
+    # valid_2 = np.all((adjusted_voxels >= 0) & (adjusted_voxels < patch_size), axis=1)
+    # valid_2 = True
+    # valid = valid_1 & valid_2
 
     # assert valid.any()
     # indices = np.where(valid)[0]
-    # # assert indices.shape[0] ==524288
+    # assert indices.shape[0] ==524288
 
     # all_coords = roi_voxels_1[indices]
 
 
 
 
-    # # selected_voxels = roi_voxels_1[indices]
-    # # patch_1_positive = MyAugmentation(patch_1_positive)
-    # # adjusted_voxels = roi_voxels_1
-    # # patch_1_positive, adjusted_voxels = random_rotation(patch_1_positive, roi_voxels_1)
-    # # num_negative = max_num_voxels
-    # num_neighbors = max_num_voxels
-    # # anchor_id = random.choice(np.arange(len(indices)-num_negative-1))
-    # # positive_voxels = roi_voxels_1[indices[anchor_id:anchor_id+num_neighbors]]
-    # # anchor_voxels =  roi_voxels_1[indices[anchor_id:anchor_id+1]]
-    # # distances = np.linalg.norm(all_coords[:, :2] - anchor_voxels[:, :2], axis=1)
-    # # distances = np.linalg.norm(all_coords - anchor_voxels, axis=1)
-    # # pos_radius = 10
-    # # neg_radius = 20
-    # # positive_voxels = all_coords[distances <= pos_radius]
-    # # negative_voxels = all_coords[distances>=neg_radius]
+    # selected_voxels = roi_voxels_1[indices]
+    # patch_1_positive = MyAugmentation(patch_1_positive)
+    # adjusted_voxels = roi_voxels_1
+    # patch_1_positive, adjusted_voxels = random_rotation(patch_1_positive, roi_voxels_1)
+    # num_negative = max_num_voxels
+    num_neighbors = max_num_voxels
+    # anchor_id = random.choice(np.arange(len(indices)-num_negative-1))
+    # positive_voxels = roi_voxels_1[indices[anchor_id:anchor_id+num_neighbors]]
+    # anchor_voxels =  roi_voxels_1[indices[anchor_id:anchor_id+1]]
+    # distances = np.linalg.norm(all_coords[:, :2] - anchor_voxels[:, :2], axis=1)
+    # distances = np.linalg.norm(all_coords - anchor_voxels, axis=1)
+    # pos_radius = 10
+    # neg_radius = 20
+    # positive_voxels = all_coords[distances <= pos_radius]
+    # negative_voxels = all_coords[distances>=neg_radius]
     
 
     # if indices.shape[0] > num_neighbors:
     #     anchor_voxels = all_coords[np.random.choice(indices.shape[0], num_neighbors, replace=False)]
     # else:
-    #     print('not enough values, random with replacement=True')
     #     anchor_voxels = all_coords[np.random.choice(indices.shape[0], num_neighbors, replace=True)]
 
         # negative_voxels = all_coords[np.random.choice(indices.shape[0], num_negative, replace=False)]
@@ -243,44 +240,24 @@ def sample_views(
     return patch_1, patch_1_positive, 0, 0, 0, 0
 
 
-
-
-def random_contrast(image):
-    if random.uniform(0, 1) < 0.5:
-        factor = random.uniform(0.75, 1.25)
-        mean = np.mean(image)
-        image = (image - mean) * factor + mean
-        image = np.clip(image, -1350, 1000)  # Ensure values are in HU range
-    return image
-
-
-
-
 def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_hu, max_window_hu):
-# def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_hu, max_window_hu, rotate_angle):
     assert image.ndim == 3
 
-    # spatial augmentations: random rescale, rotation and crop
     box = sample_box(image.shape, patch_size, anchor_voxel)
     image = crop_to_box(image, box, axis=(-3, -2, -1))
     image_positive = copy.copy(image)
 
-    # image_positive = np.apply_along_axis(np.random.permutation, axis=2, arr=image_positive)
     
-    shift = box[0]
-    voxels_dict = {}
-    voxels = voxels - shift
-    voxels_dict['voxels_shifted'] = voxels
-    voxels_dict['shift'] = shift
-    anchor_voxel = anchor_voxel - shift
-    # return image, voxels
-    
-    # intensity augmentations
-    
+    zero_percentage = (image == 0).sum() / np.prod(image.shape)
+
+   
+    if zero_percentage >= 0.9:
+        return None, None, None 
+   
     if random.uniform(0, 1) < 0.5:
         if random.uniform(0, 1) < 0.5:
             # random gaussian blur in axial plane
-            sigma = random.uniform(0.25, 1.5)
+            sigma = random.uniform(0.5, 1.5)
             image = gaussian_filter(image, sigma, axis=(0, 1))
         else:
             # random gaussian sharpening in axial plane
@@ -293,23 +270,13 @@ def sample_view(image, voxels, anchor_voxel, patch_size, window_hu, min_window_h
         sigma_hu = random.uniform(0, 30)
         image = image + np.random.normal(0, sigma_hu, size=image.shape).astype('float32')
 
-
-    
-    if random.uniform(0, 1) < 0.5:
-        image = random_contrast(image)
-
-
     if random.uniform(0, 1) < 0.8:
         window_hu = (random.uniform(max_window_hu[0], min_window_hu[0]),
                      random.uniform(min_window_hu[1], max_window_hu[1]))
-    # window_hu = [-1350, 1000]
+
     image = scale_hu(image, window_hu)
-    # image_positive = scale_hu(image_positive, window_hu)
 
-
-    
-    # voxels={}
-    return image, voxels_dict, image_positive
+    return image, 0, image_positive
 
 
 
